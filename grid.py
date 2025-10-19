@@ -28,3 +28,4 @@ def update_grid(grid):
                             new_grid[nr, nc] = 1
                             break
     return new_grid
+
