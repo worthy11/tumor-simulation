@@ -77,3 +77,14 @@ def get_vitality():
     co2_component = np.exp(-5 * (CO2/CELLULAR_RESPIRATION["ch_CO2"]-1)**4 * (CO2-CELLULAR_RESPIRATION["ch_CO2"]>0))
 
     return o2_component * glucose_component * co2_component
+
+def get_energy():
+    # TODO: drug_impact = k_ac * c_ac * V_saturation
+    V = get_vitality()
+    V_saturation = V / (V + 1)
+    drug_impact = 0
+    active_cells = ((VITALITY_ENERGY["kp_a"] * V - VITALITY_ENERGY["kc_a"] * V_saturation - drug_impact) *
+                    (V > VITALITY_ENERGY["v_ch"]))
+    quiescent_cells = (-VITALITY_ENERGY["kc_q"] * V_saturation) * (V <= VITALITY_ENERGY["v_ch"])
+
+    return active_cells + quiescent_cells
