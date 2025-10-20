@@ -1,42 +1,22 @@
 import numpy as np
 from config import *
 
-O2 = np.full((ROWS, COLS), 0.5 * 10e-3) #mM
-GLUCOSE = np.full((ROWS, COLS), 4 * 10e-3)
-CO2 = np.full((ROWS, COLS), 2 * 10e-3)
-VITALITY = np.full((ROWS, COLS), 2 * 10e-3)
-ENERGY = np.full((ROWS, COLS), 2 * 10e-3)
-
-vessel_map = np.zeros((ROWS, COLS))
-vessel_map[0:3, :] = 1.0  # Top edge vessels
-vessel_map[:, 0:3] = 1.0  # Left edge vessels
-for i in range(5, ROWS, 50):
-    vessel_map[i:i+2, :] = 0.5  # Smaller vessels
-for j in range(5, COLS, 50):
-    vessel_map[:, j:j+2] = 0.5  # Smaller vessels
+O2 = np.full((ROWS, COLS), 0.5 * 1e-7) #mM
+GLUCOSE = np.full((ROWS, COLS), 4 * 1e-3)
+CO2 = np.full((ROWS, COLS), 2 * 1e-3)
+VITALITY = np.full((ROWS, COLS), 2 * 1e-3)
+ENERGY = np.full((ROWS, COLS), 2 * 1e-3)
 
 time_step = 0
 
-def update_O2_concentration(dt=1e-2, use_pulsatile=False):
+def update_O2_concentration():
     global O2, time_step
+    delta = 2 * 1e-5
+    assumed_p_ins = 5
+    assumed_p_lum = 40
+    assumed_diameter_ratio = 0.1
     
-    reaction = - CELLULAR_RESPIRATION["gamma_0"]*get_vitality() - CELLULAR_RESPIRATION["eps_O2"]*O2
-
-    delta_di = (1-(1-CELLULAR_RESPIRATION["d_O2"]/HEMODYNAMICS_TME["dt_p"])**2)**2
-    P_i = (1-delta_di)*(HEMODYNAMICS_TME["L0_p"]/HEMODYNAMICS_TME["k_iEC"]*(40-5-HEMODYNAMICS_TME["delta_vEC"]*(HEMODYNAMICS_TME["pi_lum"]-HEMODYNAMICS_TME["pi_insEC"])))
-    vascular_base = HEMODYNAMICS_TME["k_iEC"] * (P_i * HEMODYNAMICS_TME["S_VEC"] * 0.5 * CELLULAR_RESPIRATION["c_pO2"] + HEMODYNAMICS_TME["S_VEC"] * 0.5 * (CELLULAR_RESPIRATION["c_pO2"] - O2)*P_i/(np.exp(P_i)-1))
-    
-    VASCULAR_SCALE = 1e-10  # Tune this: higher = more O2 supply, lower = less supply
-    vascular = vessel_map * vascular_base * VASCULAR_SCALE
-    
-    if use_pulsatile:
-        heartbeat_freq = 1  # Hz
-        pulse = 0.5 + 0.5 * np.sin(2 * np.pi * heartbeat_freq * time_step * dt)
-        vascular = vascular * pulse
-        time_step += 1
-    
-    delta = 2 * 1e-7
-    
+    reaction = -CELLULAR_RESPIRATION["gamma_0"]*get_vitality() - CELLULAR_RESPIRATION["eps_O2"]*O2
     convection = np.zeros_like(O2)
     diffusion = np.zeros_like(O2)
     
@@ -54,9 +34,18 @@ def update_O2_concentration(dt=1e-2, use_pulsatile=False):
             laplacian = (left + right + up + down - 4*self) / delta**2
             diffusion[i][j] = CELLULAR_RESPIRATION["D_O2"] * laplacian
 
-    O2 = O2 - dt * convection + dt * diffusion + dt * reaction + dt * vascular
-    O2 = np.maximum(O2, 0)
+    delta_di = (1-(1-CELLULAR_RESPIRATION["d_O2"]/HEMODYNAMICS_TME["dt_p"])**2)**2
+    P_i = (1-delta_di) * (HEMODYNAMICS_TME["L0_p"] / HEMODYNAMICS_TME["k_iEC"] * (assumed_p_lum - assumed_p_ins - HEMODYNAMICS_TME["delta_vEC"] * (HEMODYNAMICS_TME["pi_lum"]-HEMODYNAMICS_TME["pi_insEC"])))
+    vascular = HEMODYNAMICS_TME["k_iEC"] * (P_i * HEMODYNAMICS_TME["S_VEC"] * assumed_diameter_ratio * CELLULAR_RESPIRATION["c_pO2"] + HEMODYNAMICS_TME["S_VEC"] * assumed_diameter_ratio * (CELLULAR_RESPIRATION["c_pO2"] - O2)*P_i/(np.exp(P_i)-1))
     
+    pulse = (time_step * DT * 60) % BPM == 0
+    vascular = vascular * pulse
+    time_step += 1
+
+    vascular = (vascular - DT*convection) * VESSEL_MAP
+    O2 = O2 + DT*reaction + DT*vascular + DT*diffusion
+    O2 = np.maximum(O2, 0)
+
     return O2
 
 

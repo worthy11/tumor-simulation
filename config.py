@@ -1,9 +1,14 @@
+import numpy as np
+
 ROWS = 200
 COLS = 200
-DIVISION_PROB = 0.2
-DEATH_PROB = 0.05
-STEPS = 100
+STEPS = 1000
+DT = 1e-1
+BPM = 60
 
+VESSEL_MAP = np.zeros((ROWS, COLS))
+VESSEL_MAP[-3:, :] = 1
+VESSEL_MAP[:, :3] = 1
 
 CELLULAR_RESPIRATION = {
     "D_O2": 1 * 1e-9,      # diffusion coefficient of O2
