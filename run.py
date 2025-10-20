@@ -1,9 +1,11 @@
 import numpy as np
 from grids import O2, update_O2_concentration
-from visualization import animate, show_vessel_network
+from visualization import animate, draw_vessels
+import config
 
 def main():
-    show_vessel_network()
+    new_vessel_map = draw_vessels()
+    config.VESSEL_MAP[:] = new_vessel_map
     
     initial_O2 = O2.copy()
     def update_func():

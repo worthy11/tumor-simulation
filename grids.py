@@ -14,7 +14,7 @@ def update_O2_concentration():
     delta = 2 * 1e-5
     assumed_p_ins = 5
     assumed_p_lum = 40
-    assumed_diameter_ratio = 0.1
+    assumed_diameter_ratio = 0.3  # Pulse strength
     
     reaction = -CELLULAR_RESPIRATION["gamma_0"]*get_vitality() - CELLULAR_RESPIRATION["eps_O2"]*O2
     convection = np.zeros_like(O2)
@@ -42,7 +42,7 @@ def update_O2_concentration():
     vascular = vascular * pulse
     time_step += 1
 
-    vascular = (vascular - DT*convection) * VESSEL_MAP
+    vascular = (DT*vascular - DT*convection) * VESSEL_MAP
     O2 = O2 + DT*reaction + DT*vascular + DT*diffusion
     O2 = np.maximum(O2, 0)
 
