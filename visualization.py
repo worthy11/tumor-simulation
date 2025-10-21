@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap
 from config import *
+import grids
 
 cmap = ListedColormap(['white', 'red'])
 
@@ -14,30 +15,90 @@ def show_vessel_network():
     plt.tight_layout()
     plt.show()
 
-def animate(initial_concentration, update_function, title="Concentration", cmap='viridis', vmin=None, vmax=None):
+def cells_to_rgb(cells):
+    """Convert CELLS tensor to RGB image for visualization."""
+    rows, cols = cells.shape[1], cells.shape[2]
+    rgb = np.ones((rows, cols, 3))
+    
+    colors = {
+        0: np.array([1.0, 1.0, 1.0]),      # healthy - white
+        1: np.array([0.0, 1.0, 1.0]),      # endothelial - cyan
+        2: np.array([1.0, 0.0, 0.0]),      # active - red
+        3: np.array([1.0, 0.647, 0.0]),    # quiescent - orange
+        4: np.array([1.0, 1.0, 0.0]),      # migrating - yellow
+        5: np.array([0.545, 0.271, 0.075]) # necrotic - brown
+    }
+    
+    for cell_type in [0, 1, 4, 3, 2, 5]:
+        mask = cells[cell_type] > 0
+        rgb[mask] = colors[cell_type]
+    
+    return rgb
+
+def animate(initial_concentration, update_function, cmap='viridis', vmin=None, vmax=None, cells=None):
     plt.ion()
-    fig, ax = plt.subplots(figsize=(8, 6))
+    num_plots = 4 if cells is not None else 3
+    fig, axes = plt.subplots(1, num_plots, figsize=(5 * num_plots, 5))
     
     concentration = initial_concentration.copy()
+    titles = ['O2', 'Glucose', 'CO2']
     
-    if vmin is None:
-        vmin = np.min(concentration)
-    if vmax is None:
-        vmax = np.max(concentration)
+    ims = []
+    for idx, ax in enumerate(axes[:3]):
+        data = concentration[idx]
+        vmin_i = np.min(data) if vmin is None else (vmin[idx] if isinstance(vmin, (list, np.ndarray)) else vmin)
+        vmax_i = np.max(data) if vmax is None else (vmax[idx] if isinstance(vmax, (list, np.ndarray)) else vmax)
+        
+        im = ax.imshow(data, cmap=cmap, interpolation='bilinear', 
+                       vmin=vmin_i, vmax=vmax_i, origin='lower')
+        plt.colorbar(im, ax=ax, label='Concentration (mM)')
+        ax.set_title(f"{titles[idx]} - Step 0")
+        ax.set_xlabel('X')
+        ax.set_ylabel('Y')
+        ims.append(im)
     
-    im = ax.imshow(concentration, cmap=cmap, interpolation='bilinear', 
-                   vmin=vmin, vmax=vmax, origin='lower')
-    cbar = plt.colorbar(im, ax=ax, label='Concentration (mM)')
-    ax.set_title(f"{title} - Step 0")
-    ax.set_xlabel('X')
-    ax.set_ylabel('Y')
+    if cells is not None:
+        cell_rgb = cells_to_rgb(cells)
+        cell_im = axes[3].imshow(cell_rgb, interpolation='nearest', origin='lower')
+        axes[3].set_title('Cells - Step 0')
+        axes[3].set_xlabel('X')
+        axes[3].set_ylabel('Y')
     
     plt.tight_layout()
     
     for step in range(1, STEPS + 1):
-        concentration = update_function()
-        im.set_data(concentration)
-        ax.set_title(f"{title} - Step {step}")
+        update_function()
+        for idx, im in enumerate(ims):
+            im.set_data(grids.ENV[idx])
+            axes[idx].set_title(f"{titles[idx]} - Step {step}")
+        
+        if cells is not None:
+            cell_rgb = cells_to_rgb(cells)
+            cell_im.set_data(cell_rgb)
+            axes[3].set_title(f'Cells - Step {step}')
+            
+            # Print cell statistics
+            active_mask = cells[2] > 0
+            quiescent_mask = cells[3] > 0
+            necrotic_mask = cells[5] > 0
+            
+            active_count = np.sum(active_mask)
+            quiescent_count = np.sum(quiescent_mask)
+            necrotic_count = np.sum(necrotic_mask)
+            
+            active_vitality = np.mean(grids.TUMOR[0][active_mask]) if active_count > 0 else 0
+            quiescent_vitality = np.mean(grids.TUMOR[0][quiescent_mask]) if quiescent_count > 0 else 0
+            necrotic_vitality = np.mean(grids.TUMOR[0][necrotic_mask]) if necrotic_count > 0 else 0
+            
+            active_energy = np.mean(grids.TUMOR[1][active_mask]) if active_count > 0 else 0
+            quiescent_energy = np.mean(grids.TUMOR[1][quiescent_mask]) if quiescent_count > 0 else 0
+            necrotic_energy = np.mean(grids.TUMOR[1][necrotic_mask]) if necrotic_count > 0 else 0
+            
+            print(f"Step {step}:")
+            print(f"  Active: {active_count} (V: {active_vitality:.2e}, E: {active_energy:.2e})")
+            print(f"  Quiescent: {quiescent_count} (V: {quiescent_vitality:.2e}, E: {quiescent_energy:.2e})")
+            print(f"  Necrotic: {necrotic_count} (V: {necrotic_vitality:.2e}, E: {necrotic_energy:.2e})")
+        
         plt.pause(DT)
     
     plt.ioff()

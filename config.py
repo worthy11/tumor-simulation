@@ -5,12 +5,31 @@ COLS = 200
 STEPS = 1000
 DT = 1e-1
 BPM = 60
+DELTA = 2 * 1e-5
 
 VESSEL_MAP = np.zeros((ROWS, COLS))
-VESSEL_MAP[-3:, :] = 1
-VESSEL_MAP[:, :3] = 1
 
-CELLULAR_RESPIRATION = {
+O2 = np.full((ROWS, COLS), 8.4 * 1e-3) #mM
+GLUCOSE = np.full((ROWS, COLS), 5.5 * 1e-3)
+CO2 = np.full((ROWS, COLS), 10.5 * 1e-3)
+ENV = np.stack([O2, GLUCOSE, CO2])
+
+VITALITY = np.full((ROWS, COLS), 1.)
+ENERGY = np.full((ROWS, COLS), 1.)
+DENSITY_TC = np.zeros((ROWS, COLS))
+TUMOR = np.stack([VITALITY, ENERGY, DENSITY_TC])
+
+CELLS = np.zeros((6, ROWS, COLS))
+# 0 - healthy cell
+# 1 - endothelial cell
+# 2 - active tumor cell
+# 3 - quiescent tumor cell
+# 4 - migrating tumor cell
+# 5 - necrotic tumor cell
+start_x, start_y = ROWS // 2, COLS // 2
+CELLS [2, start_x, start_y] = 1
+
+CELL_RES = {
     "D_O2": 1 * 1e-9,      # diffusion coefficient of O2
     "D_g": 3.6 * 1e-10,    # diffusion coefficient of glucose
     "D_CO2": 7.4 * 1e-10,  # diffusion coefficient of CO2
@@ -25,11 +44,17 @@ CELLULAR_RESPIRATION = {
     "eps_g": 1.7 * 1e-10,  # natural decay rate of glucose
     "eps_CO2": 1 * 1e-9,   # natural decay rate of CO2
     "r_f": 1,               # retardation factor
-    "d_O2": 0.3 # !!! nm !!!
+    "d_O2": 0.3,  # !!! nm !!!
+    "d_g": 1.,    # !!! nm !!!
+    "d_CO2": 0.33 # !!! nm !!!
 }
-V = CELLULAR_RESPIRATION["r_f"] * 0.7 * 1e-6
+V = CELL_RES["r_f"] * 0.7 * 1e-6
+DIFFUSION = np.array([CELL_RES["D_O2"], CELL_RES["D_g"], CELL_RES["D_CO2"]]).reshape(3, 1, 1)
+CHAR = np.array([CELL_RES["ch_O2"], CELL_RES["ch_g"], CELL_RES["ch_CO2"]])
+PLASMA = np.array([CELL_RES["c_pO2"], CELL_RES["c_pg"], CELL_RES["c_pCO2"]]).reshape(3, 1, 1)
+DIAMETER = np.array([CELL_RES["d_O2"], CELL_RES["d_g"], CELL_RES["d_CO2"]])
 
-GROWTH_FACTORS = {
+VEGF = {
                             # -- Values concern VEGF --
     "D_VEGF": 2.9 * 1e-11,    # diffusion coefficient
     "r_VEGF": 2 * 1e-12,      # production rate by tumor cells
@@ -52,7 +77,7 @@ ECM = {
     "c_pMMP": 72                # plasma concentration
 }
 
-VITALITY_ENERGY = {
+VIT_EN = {
     "phi" : 3.67,       # proportionality coefficient of consumption/production rate of CR-agents
     "v_ch": .5,         # characteristic cellular vitality for active tumor cells
     "psi_ch": 30,       # characteristic cellular energy for proliferation
@@ -62,7 +87,7 @@ VITALITY_ENERGY = {
     "k_W": 1 * 1e-10,  # Warburg effect of tumor cells
 }
 
-TUMOR_GROWTH_ANGIO = {
+GROWTH = {
     "alpha": 1,             # saturation coefficient of chemotaxis
     "beta_c": 0.26,         # weight coefficient of chemotaxis
     "beta_h": 0.1,          # weight coefficient of haptotaxis
