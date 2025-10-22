@@ -86,13 +86,13 @@ def animate(initial_concentration, update_function, cmap='viridis', vmin=None, v
             quiescent_count = np.sum(quiescent_mask)
             necrotic_count = np.sum(necrotic_mask)
             
-            active_vitality = np.mean(grids.TUMOR[0][active_mask]) if active_count > 0 else 0
-            quiescent_vitality = np.mean(grids.TUMOR[0][quiescent_mask]) if quiescent_count > 0 else 0
-            necrotic_vitality = np.mean(grids.TUMOR[0][necrotic_mask]) if necrotic_count > 0 else 0
+            active_vitality = np.mean(grids.V[active_mask]) if active_count > 0 else 0
+            quiescent_vitality = np.mean(grids.V[quiescent_mask]) if quiescent_count > 0 else 0
+            necrotic_vitality = np.mean(grids.V[necrotic_mask]) if necrotic_count > 0 else 0
             
-            active_energy = np.mean(grids.TUMOR[1][active_mask]) if active_count > 0 else 0
-            quiescent_energy = np.mean(grids.TUMOR[1][quiescent_mask]) if quiescent_count > 0 else 0
-            necrotic_energy = np.mean(grids.TUMOR[1][necrotic_mask]) if necrotic_count > 0 else 0
+            active_energy = np.mean(grids.E[active_mask]) if active_count > 0 else 0
+            quiescent_energy = np.mean(grids.E[quiescent_mask]) if quiescent_count > 0 else 0
+            necrotic_energy = np.mean(grids.E[necrotic_mask]) if necrotic_count > 0 else 0
             
             print(f"Step {step}:")
             print(f"  Active: {active_count} (V: {active_vitality:.2e}, E: {active_energy:.2e})")

@@ -3,106 +3,167 @@ from config import *
 
 time_step = 0
 
-def update_environment():
-    global ENV, time_step
-    assumed_p_ins = 5
-    assumed_p_lum = 40
-    assumed_diameter_ratio = 0.9  # Pulse strength
-    
-    reaction_O2 = -CELL_RES["gamma_0"]*update_vitality()*CELLS[2] - CELL_RES["eps_O2"]*ENV[0]
-    reaction_g = -1/6*CELL_RES["gamma_0"]*update_vitality()*CELLS[2] - CELL_RES["eps_g"]*ENV[1]
-    reaction_CO2 = CELL_RES["gamma_0"]*update_vitality()*CELLS[2] - CELL_RES["eps_CO2"]*ENV[2]
-    reaction = np.stack([reaction_O2, reaction_g, reaction_CO2])
+def set_initial_conditions():
+    O2[:] = ch_O2
+    G[:] = ch_g
+    CO2[:] = ch_CO2
+    ECM[:] = ch_ECM
+    VEGF[:] = MMP[:] = P_INS[:] = P_LUM[:] = 0.
+    U_INS[:] = U_BLOOD[:] = 0.
 
-    diffusion = np.zeros_like(ENV)
-    laplacian = np.array([np.gradient(np.gradient(ENV[i], DELTA)[0], DELTA)[0] + np.gradient(np.gradient(ENV[i], DELTA)[1], DELTA)[1] for i in range(3)])
-    diffusion = DIFFUSION * laplacian
-    
-    convection = np.zeros_like(ENV)
-    left = np.roll(ENV, 1, axis=2)
-    left[:, :, 0] = ENV[:, :, 0]
-    up = np.roll(ENV, 1, axis=1)
-    up[:, 0, :] = ENV[:, 0, :]
-    convection = V * (left + up) / DELTA * VESSEL_MAP
+# -- MOLECULAR SCALE --
+def update_o2():
+    advection = diffusion = consumption = perfusion = np.zeros((ROWS, COLS), dtype=np.float64)
 
-    delta_di = (1-(1-DIAMETER/HEMODYNAMICS_TME["dt_p"])**2)**2
-    P_i = ((1-delta_di) * (HEMODYNAMICS_TME["L0_p"] / HEMODYNAMICS_TME["k_iEC"] * (assumed_p_lum - assumed_p_ins - HEMODYNAMICS_TME["delta_vEC"] * (HEMODYNAMICS_TME["pi_lum"]-HEMODYNAMICS_TME["pi_insEC"])))).reshape(3, 1, 1)
-    vascular = HEMODYNAMICS_TME["k_iEC"] * (P_i * HEMODYNAMICS_TME["S_VEC"] * assumed_diameter_ratio * PLASMA + HEMODYNAMICS_TME["S_VEC"] * assumed_diameter_ratio * (PLASMA - ENV)*P_i/(np.exp(P_i)-1))
-    pulse = (time_step * DT * 60) % BPM == 0
-    vascular = vascular * pulse * VESSEL_MAP - DT*convection
+    Fx = U_INS[0] * O2
+    Fy = U_INS[1] * O2
 
-    ENV[:] = ENV + DT*reaction + DT*vascular + DT*diffusion
-    ENV[:] = np.maximum(ENV, 0)
+    dFx_dx = (np.roll(Fx, -1, axis=1) - np.roll(Fx, 1, axis=1))
+    dFy_dy = (np.roll(Fy, -1, axis=0) - np.roll(Fy, 1, axis=0))
 
-    time_step += 1
+    divergence = dFx_dx + dFy_dy
+    divergence[:, 0] = divergence[:, 1]
+    divergence[:, -1] = divergence[:, -2]
+    divergence[0, :] = divergence[1, :]
+    divergence[-1, :] = divergence[-2, :]
+    advection = divergence
 
-    return ENV
+    laplacian = (np.roll(O2, 1, axis=0) + np.roll(O2, -1, axis=0) + np.roll(O2, 1, axis=1) + np.roll(O2, -1, axis=1) - 4*O2) / DELTA**2
+    laplacian[:, 0] = laplacian[:, 1]
+    laplacian[:, -1] = laplacian[:, -2]
+    laplacian[0, :] = laplacian[1, :]
+    laplacian[-1, :] = laplacian[-2, :]
+    diffusion = O2 * laplacian
 
+    C_O2 = gamma_0 * V
+    consumption = C_O2 * CELLS[1]
+
+    # TODO: o co chodzi z d_v w tym równaniu? na razie d_0
+    vessels = P_LUM > 0 # * CELLS[0]?
+    perfusion = f_O2 * d_0/d_c * (P_LUM[vessels]-P_INS[vessels])/P_LUM[vessels]
+
+    O2 += DT * (-advection + diffusion - consumption + perfusion)
+
+def update_glucose():
+    advection = diffusion = consumption = perfusion = np.zeros((ROWS, COLS), dtype=np.float64)
+
+    Fx = U_INS[0] * G
+    Fy = U_INS[1] * G
+
+    dFx_dx = (np.roll(Fx, -1, axis=1) - np.roll(Fx, 1, axis=1))
+    dFy_dy = (np.roll(Fy, -1, axis=0) - np.roll(Fy, 1, axis=0))
+
+    divergence = dFx_dx + dFy_dy
+    divergence[:, 0] = divergence[:, 1]
+    divergence[:, -1] = divergence[:, -2]
+    divergence[0, :] = divergence[1, :]
+    divergence[-1, :] = divergence[-2, :]
+    advection = divergence
+
+    laplacian = (np.roll(G, 1, axis=0) + np.roll(G, -1, axis=0) + np.roll(G, 1, axis=1) + np.roll(G, -1, axis=1) - 4*G) / DELTA**2
+    laplacian[:, 0] = laplacian[:, 1]
+    laplacian[:, -1] = laplacian[:, -2]
+    laplacian[0, :] = laplacian[1, :]
+    laplacian[-1, :] = laplacian[-2, :]
+    diffusion = G * laplacian
+
+    C_g = 1/6 * gamma_0 * V
+    consumption = C_g * CELLS[1]
+
+    # TODO: o co chodzi z d_v w tym równaniu? na razie d_0
+    vessels = P_LUM > 0 # * CELLS[0]?
+    perfusion = (f_g * G / (G + km_g)) * d_0/d_c * (P_LUM[vessels]-P_INS[vessels])/P_LUM[vessels]
+
+    G += DT * (-advection + diffusion - consumption + perfusion)
+
+def update_co2():
+    advection = diffusion = consumption = perfusion = np.zeros((ROWS, COLS), dtype=np.float64)
+
+    Fx = U_INS[0] * CO2
+    Fy = U_INS[1] * CO2
+
+    dFx_dx = (np.roll(Fx, -1, axis=1) - np.roll(Fx, 1, axis=1))
+    dFy_dy = (np.roll(Fy, -1, axis=0) - np.roll(Fy, 1, axis=0))
+
+    divergence = dFx_dx + dFy_dy
+    divergence[:, 0] = divergence[:, 1]
+    divergence[:, -1] = divergence[:, -2]
+    divergence[0, :] = divergence[1, :]
+    divergence[-1, :] = divergence[-2, :]
+    advection = divergence
+
+    laplacian = (np.roll(CO2, 1, axis=0) + np.roll(CO2, -1, axis=0) + np.roll(CO2, 1, axis=1) + np.roll(CO2, -1, axis=1) - 4*CO2) / DELTA**2
+    laplacian[:, 0] = laplacian[:, 1]
+    laplacian[:, -1] = laplacian[:, -2]
+    laplacian[0, :] = laplacian[1, :]
+    laplacian[-1, :] = laplacian[-2, :]
+    diffusion = CO2 * laplacian
+
+    C_CO2 = -gamma_0 * V
+    consumption = C_CO2 * CELLS[1]
+
+    # TODO: o co chodzi z d_v w tym równaniu? na razie d_0
+    vessels = P_LUM > 0 # * CELLS[0]?
+    perfusion = f_CO2 * d_0/d_c * (P_LUM[vessels]-P_INS[vessels])/P_LUM[vessels]
+
+    CO2 += DT * (-advection + diffusion - consumption - perfusion)
+
+def update_ecm():
+    pass
+
+def update_mmp():
+    pass
+
+def update_vegf():
+    pass
+
+def update_vegfr2():
+    pass
+
+def update_treatment():
+    pass
+
+# -- CELLULAR SCALE --
 def update_vitality():
-    o2_component = VIT_EN["phi"] * ENV[0]/(ENV[0]+CELL_RES["ch_O2"])+VIT_EN["k_W"]
-    glucose_component = ENV[1]/(ENV[1]+CELL_RES["ch_g"])
-    co2_component = np.exp(-5 * (ENV[2]/CELL_RES["ch_CO2"]-1)**4 * (ENV[2]-CELL_RES["ch_CO2"]>0))
+    o2_component = phi * O2 / (O2 + ch_O2)
+    glucose_component = G / (G + ch_g)
+    co2_component = np.exp(-5 * (CO2 / ch_CO2 - 1)**4 * (CO2 - ch_CO2 > 0))
 
-    TUMOR[0, :, :] = o2_component * glucose_component * co2_component
-    return o2_component * glucose_component * co2_component
+    V[:] = o2_component * glucose_component * co2_component
 
 def update_energy():
     # TODO: drug_impact = k_ac * c_ac * V_saturation
-    V = TUMOR[0]
     V_saturation = V / (V + 1)
     drug_impact = 0
-    active_cells = ((VIT_EN["kp_a"] * V - VIT_EN["kc_a"] * V_saturation - drug_impact) *
-                    (V > VIT_EN["v_ch"]))
-    quiescent_cells = (-VIT_EN["kc_q"] * V_saturation) * (V <= VIT_EN["v_ch"])
+    active_cells = ((kp_a * V - kc_a * V_saturation - drug_impact) * (V > v_ch))
+    quiescent_cells = -kc_q * (V <= v_ch)
 
-    TUMOR[1, :, :] = active_cells + quiescent_cells
-    return active_cells + quiescent_cells
+    E[:] = active_cells + quiescent_cells
 
-def update_tumor_density():
-    laplacian = np.gradient(np.gradient(TUMOR[2], DELTA)[0], DELTA)[0] + np.gradient(np.gradient(TUMOR[2], DELTA)[1], DELTA)[1]
-    randomwalk = GROWTH["D_TC"] * laplacian
-
-    # TODO: haptotaxis (ECM density)
-    haptotaxis = 0
-
-    dV_dy, dV_dx = np.gradient(TUMOR[0], DELTA)
-    cooption_y = GROWTH["beta_COP"] * TUMOR[2] * dV_dy
-    cooption_x = GROWTH["beta_COP"] * TUMOR[2] * dV_dx
-
-    divergence = np.gradient(cooption_y, DELTA, axis=0)[0] + np.gradient(cooption_x, DELTA, axis=1)[1]
-
-    TUMOR[2, :, :] = TUMOR[2] + randomwalk - divergence
-
-def grow_tumor():
-    update_vitality()
-    update_energy()
-    update_tumor_density()
-    update_environment()
-    print(f"V: {np.mean(TUMOR[0])}")
-    print(f"E: {np.mean(TUMOR[1])}")
-
+def update_tumor_phenotypes():
     for i in range(ROWS):
         for j in range(COLS):
-            v = TUMOR[0, i, j]
-            e = TUMOR[1, i, j]
+            vitality = V[i, j]
+            energy = E[i, j]
 
             # active
             if CELLS[2, i, j]:
                 # quiescence
-                if v < VIT_EN["v_ch"]:
+                if vitality < v_ch:
                     CELLS[2, i, j] = 0
                     CELLS[3, i, j] = 1
                 
                 # division
-                elif e > VIT_EN["psi_ch"]:
+                elif energy > psi_ch:
                     i_min, i_max = max(0, i-1), min(ROWS, i+2)
                     j_min, j_max = max(0, j-1), min(COLS, j+2)
 
-                    block = TUMOR[2, i_min:i_max, j_min:j_max].copy()
+                    block = V[i_min:i_max, j_min:j_max].copy()
                     block_center = (i - i_min, j - j_min)
                     neighbors = np.delete(block.flatten(), block_center[0] * (j_max - j_min) + block_center[1])
-                    weights = neighbors / neighbors.sum()
-                    choice = np.random.choice(8, p=weights)
+                    neighbor_sum = neighbors.sum()
+                    weights = neighbors / neighbor_sum if neighbor_sum > 0 else np.full(8, 1/8)
+                    choice = np.random.choice(len(neighbors), p=weights)
                     indices = [(i_offset, j_offset) for i_offset in range(i_min, i_max) 
                              for j_offset in range(j_min, j_max)
                              if (i_offset, j_offset) != (i, j)]
@@ -113,10 +174,77 @@ def grow_tumor():
             # quiescent
             if CELLS[3, i, j]:
                 # wake up
-                if v > VIT_EN["v_ch"]:
+                if vitality > v_ch:
                     CELLS[2, i, j] = 1
                     CELLS[3, i, j] = 0
                 # necrosis
-                elif e < 1e-30:
+                elif energy < 1e-30:
                     CELLS[5, i, j] = 1
                     CELLS[3, i, j] = 0
+
+def update_endothelial_phenotypes():
+    pass
+
+
+# -- TISSUE SCALE -- 
+def update_vessels():
+    # 1. lumenogenesis
+    # 2. vessel adaptation
+    # 3. vessel deformation
+    # 4. vessel disruption
+    pass
+
+def update_hemodynamics():
+    # 1. P_LUM
+    # 2. U_BLOOD
+    pass
+
+# TODO NEXT
+def update_iff():
+    # 1. P_INS
+    # 2. U_INS
+    pass
+
+def update_hemorheology():
+    pass
+
+def update_tumor_growth():
+    pass
+
+def update_angiogenesis():
+    pass
+
+
+def update_molecular_scale():
+    update_o2()
+    update_glucose()
+    update_co2()
+
+    update_ecm()
+    update_mmp()
+
+    update_vegf()
+    update_vegfr2()
+
+    update_treatment()
+
+def update_cellular_scale():
+    update_vitality()
+    update_energy()
+    update_tumor_phenotypes()
+    update_endothelial_phenotypes()
+
+def update_tissue_scale():
+    update_vessels()
+    update_hemodynamics()
+    update_iff()
+    update_hemorheology()
+
+    update_tumor_growth()
+    update_angiogenesis()
+
+
+def update_tme():
+    update_molecular_scale()
+    update_tissue_scale()
+    update_cellular_scale() # is this order correct?
