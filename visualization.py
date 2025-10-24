@@ -24,7 +24,7 @@ def cells_to_rgb(cells):
 
 def animate(update_function, cmap='viridis', vmin=None, vmax=None):
     plt.ion()
-    fig, axes = plt.subplots(2, 2, figsize=(12, 10))
+    fig, axes = plt.subplots(2, 2, figsize=(8, 6))
     
     # Flatten axes for easier indexing
     axes = axes.flatten()

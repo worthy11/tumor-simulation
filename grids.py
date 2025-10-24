@@ -32,15 +32,19 @@ def set_initial_conditions():
     O2[:] = ch_O2
     G[:] = ch_g
     CO2[:] = ch_CO2
+
     ECM[:] = ch_ECM
-    VEGF[:] = MMP[:] = P_INS[:] = P_LUM[:] = 0.
-    P_LUM[:] = p_0
-    P_INS[:] = 5
-    U_INS[:] = U_BLOOD[:] = 0.
+    VEGF[:] = 0.
+    MMP[:] = 0.
+
+    P_INS[:] = 0.
+    P_LUM[:] = 0.
+    U_INS[:] = 0.
+    U_BLOOD[:] = 0.
 
 # -- MOLECULAR SCALE --
 def update_o2():
-    global O2, G, CO2, V, CELLS, P_LUM, P_INS, U_INS
+    global O2, V, CELLS, P_LUM, P_INS, U_INS
     advection = diffusion = consumption = perfusion = np.zeros((ROWS, COLS), dtype=np.float64)
 
     Fx = U_INS[0] * O2
@@ -61,16 +65,16 @@ def update_o2():
     laplacian[:, -1] = laplacian[:, -2]
     laplacian[0, :] = laplacian[1, :]
     laplacian[-1, :] = laplacian[-2, :]
-    diffusion = O2 * laplacian
+    diffusion = D_O2 * laplacian
 
     C_O2 = gamma_0 * V
     consumption = C_O2 * CELLS[1]
 
-    # TODO: o co chodzi z d_v w tym równaniu? na razie d_0
     vessels = P_LUM > 0 # * CELLS[0]?
     perfusion[vessels] = f_O2 * d_0/d_c * (P_LUM[vessels]-P_INS[vessels])/P_LUM[vessels]
     
     O2[:] = O2 + DT * (-advection + diffusion - consumption + perfusion)
+    O2[O2 < 0] = 0
 
 def update_glucose():
     global O2, G, CO2, V, CELLS, P_LUM, P_INS, U_INS
@@ -94,7 +98,7 @@ def update_glucose():
     laplacian[:, -1] = laplacian[:, -2]
     laplacian[0, :] = laplacian[1, :]
     laplacian[-1, :] = laplacian[-2, :]
-    diffusion = G * laplacian
+    diffusion = D_g * laplacian
 
     C_g = 1/6 * gamma_0 * V
     consumption = C_g * CELLS[1]
@@ -105,6 +109,7 @@ def update_glucose():
     perfusion[vessels] *= (P_LUM[vessels]-P_INS[vessels])/P_LUM[vessels]
 
     G = G[:] + DT * (-advection + diffusion - consumption + perfusion)
+    G[G < 0] = 0
 
 def update_co2():
     global O2, G, CO2, V, CELLS, P_LUM, P_INS, U_INS
@@ -128,7 +133,7 @@ def update_co2():
     laplacian[:, -1] = laplacian[:, -2]
     laplacian[0, :] = laplacian[1, :]
     laplacian[-1, :] = laplacian[-2, :]
-    diffusion = CO2 * laplacian
+    diffusion = D_CO2 * laplacian
 
     C_CO2 = -gamma_0 * V
     consumption = C_CO2 * CELLS[1]
@@ -138,6 +143,7 @@ def update_co2():
     perfusion[vessels] = f_CO2 * d_0/d_c * (P_LUM[vessels]-P_INS[vessels])/P_LUM[vessels]
 
     CO2[:] = CO2 + DT * (-advection + diffusion - consumption - perfusion)
+    CO2[CO2 < 0] = 0
 
 def update_ecm():
     pass
@@ -189,15 +195,14 @@ def update_tumor_phenotypes():
                 
                 # division
                 elif energy > psi_ch:
+                    print('boom')
                     i_min, i_max = max(0, i-1), min(ROWS, i+2)
                     j_min, j_max = max(0, j-1), min(COLS, j+2)
 
                     block = V[i_min:i_max, j_min:j_max].copy()
                     block_center = (i - i_min, j - j_min)
                     neighbors = np.delete(block.flatten(), block_center[0] * (j_max - j_min) + block_center[1])
-                    neighbor_sum = neighbors.sum()
-                    weights = neighbors / neighbor_sum if neighbor_sum > 0 else np.full(8, 1/8)
-                    choice = np.random.choice(len(neighbors), p=weights)
+                    choice = np.argmin(neighbors)
                     indices = [(i_offset, j_offset) for i_offset in range(i_min, i_max) 
                              for j_offset in range(j_min, j_max)
                              if (i_offset, j_offset) != (i, j)]
@@ -364,7 +369,7 @@ def update_molecular_scale():
 def update_cellular_scale():
     update_vitality()
     update_energy()
-    # update_tumor_phenotypes()
+    update_tumor_phenotypes()
     update_endothelial_phenotypes()
 
 def update_tissue_scale():
@@ -378,6 +383,8 @@ def update_tissue_scale():
 
 
 def update_tme():
+    print(V)
+    print(E)
     update_molecular_scale()
     update_tissue_scale()
     update_cellular_scale() # is this order correct?

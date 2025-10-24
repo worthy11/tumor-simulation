@@ -1,16 +1,28 @@
 import numpy as np
 
 # Grid parameters
-ROWS = 50
-COLS = 50
+ROWS = 20
+COLS = 20
 STEPS = 1000
 
 # Time parameters
 DT = 1e-1
 DELTA = 2e-5
 
-O2 = G = CO2 = ECM = MMP = VEGF = V = E = P_INS = P_LUM = RHO_TC = RHO_EC = np.zeros((ROWS, COLS), dtype=np.float64)
-U_INS = U_BLOOD = np.zeros((2, ROWS, COLS), dtype=np.float64)
+O2 = np.zeros((ROWS, COLS), dtype=np.float64)
+G = np.zeros((ROWS, COLS), dtype=np.float64)
+CO2 = np.zeros((ROWS, COLS), dtype=np.float64)
+ECM = np.zeros((ROWS, COLS), dtype=np.float64)
+MMP = np.zeros((ROWS, COLS), dtype=np.float64)
+VEGF = np.zeros((ROWS, COLS), dtype=np.float64)
+V = np.zeros((ROWS, COLS), dtype=np.float64)
+E = np.zeros((ROWS, COLS), dtype=np.float64)
+P_INS = np.zeros((ROWS, COLS), dtype=np.float64)
+P_LUM = np.zeros((ROWS, COLS), dtype=np.float64)
+RHO_TC = np.zeros((ROWS, COLS), dtype=np.float64)
+RHO_EC = np.zeros((ROWS, COLS), dtype=np.float64)
+U_INS = np.zeros((2, ROWS, COLS), dtype=np.float64)
+U_BLOOD = np.zeros((2, ROWS, COLS), dtype=np.float64)
 
 # P_INS - interstitial fluid pressure
 # P_LUM - intravascular blood pressure (czemu nie moze byc P_BLOOD??)
@@ -25,9 +37,8 @@ CELLS = np.zeros((5, ROWS, COLS))
 # 2 - quiescent tumor cell
 # 3 - migrating tumor cell
 # 4 - necrotic tumor cell
-CELLS[0, :, 20:25] = 1
-
 start_x, start_y = ROWS // 2, COLS // 2
+CELLS[0, :, 0:1] = 1
 CELLS[2, start_x-1:start_x+2, start_y] = 1
 CELLS[2, start_x, start_y-1:start_y+2] = 1
 
