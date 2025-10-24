@@ -1,23 +1,16 @@
 import numpy as np
-from grids import ENV, grow_tumor
-from visualization import animate, draw_vessels
+from grids import set_initial_conditions, update_tme
+from visualization import animate
 import config
 
 def main():
-    new_vessel_map = draw_vessels()
-    config.VESSEL_MAP[:] = new_vessel_map
-    
-    initial_env = ENV.copy()
-    
-    grow_tumor()
+    set_initial_conditions()
     
     animate(
-        initial_concentration=initial_env,
-        update_function=grow_tumor,
+        update_function=update_tme,
         cmap='plasma',
         vmin=np.array([0, 0, 0]),
-        vmax=np.array([np.max(initial_env[0]) * 2, np.max(initial_env[1]) * 2, np.max(initial_env[2]) * 2]),
-        cells=config.CELLS
+        vmax=np.array([np.max(config.O2) * 2, np.max(config.G) * 2, np.max(config.CO2) * 2])
     )
 
 if __name__ == "__main__":
