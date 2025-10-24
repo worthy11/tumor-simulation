@@ -9,7 +9,7 @@ STEPS = 1000
 DT = 1e-1
 DELTA = 5 * 1e-6
 
-O2 = G = CO2 = ECM = MMP = VEGF = V = E = P_INS = P_LUM = np.zeros((ROWS, COLS), dtype=np.float64)
+O2 = G = CO2 = ECM = MMP = VEGF = V = E = P_INS = P_LUM = RHO_TC = RHO_EC = np.zeros((ROWS, COLS), dtype=np.float64)
 U_INS = U_BLOOD = np.zeros((2, ROWS, COLS), dtype=np.float64)
 
 # P_INS - interstitial fluid pressure

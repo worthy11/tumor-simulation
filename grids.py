@@ -3,6 +3,31 @@ from config import *
 
 time_step = 0
 
+def laplacian(Z, dx=1.0, dy=1.0):
+    """Dyskretna Laplasja w 2D z warunkami brzegowymi zerowymi."""
+    Z_top    = np.roll(Z,  1, axis=0)
+    Z_bottom = np.roll(Z, -1, axis=0)
+    Z_left   = np.roll(Z,  1, axis=1)
+    Z_right  = np.roll(Z, -1, axis=1)
+    lap = (Z_top + Z_bottom + Z_left + Z_right - 4*Z) / (dx*dy)
+    
+    lap[0,:] = lap[-1,:] = lap[:,0] = lap[:,-1] = 0
+    return lap
+
+def gradient(Z, dx=1.0, dy=1.0):
+    """Oblicza gradient 2D w osiach x i y."""
+    gx = (np.roll(Z, -1, axis=0) - np.roll(Z, 1, axis=0)) / (2*dx)
+    gy = (np.roll(Z, -1, axis=1) - np.roll(Z, 1, axis=1)) / (2*dy)
+    return gx, gy
+
+def divergence(px, py, dx=1.0, dy=1.0):
+    """Oblicza dywergencję wektora 2D (px, py)."""
+    div_x = (np.roll(px, -1, axis=0) - np.roll(px, 1, axis=0)) / (2*dx)
+    div_y = (np.roll(py, -1, axis=1) - np.roll(py, 1, axis=1)) / (2*dy)
+    div = div_x + div_y
+    div[0,:] = div[-1,:] = div[:,0] = div[:,-1] = 0
+    return div
+
 def set_initial_conditions():
     O2[:] = ch_O2
     G[:] = ch_g
@@ -208,11 +233,37 @@ def update_iff():
 def update_hemorheology():
     pass
 
-def update_tumor_growth():
-    pass
-
 def update_angiogenesis():
-    pass
+    diff_term = D_tEC * laplacian(RHO_EC)
+    
+    grad_cv_x, grad_cv_y = gradient(VEGF)
+    grad_ce_x, grad_ce_y = gradient(ECM)
+    
+    chemotaxis_x = (beta_c / (1 + VEGF)) * RHO_EC * grad_cv_x
+    chemotaxis_y = (beta_c / (1 + VEGF)) * RHO_EC * grad_cv_y
+    haptotaxis_x = beta_h * RHO_EC * grad_ce_x
+    haptotaxis_y = beta_h * RHO_EC * grad_ce_y
+    
+    taxis_div = divergence(chemotaxis_x + haptotaxis_x,
+                           chemotaxis_y + haptotaxis_y)
+    
+    RHO_EC += DT * (diff_term - taxis_div)
+    
+    RHO_EC[RHO_EC < 0] = 0
+
+def update_tumor_growth():
+    diff_term = D_TC * laplacian(RHO_TC)
+    
+    grad_ce_x, grad_ce_y = gradient(ECM)
+    
+    haptotaxis_x = beta_h * RHO_TC * grad_ce_x
+    haptotaxis_y = beta_h * RHO_TC * grad_ce_y
+    
+    taxis_div = divergence(haptotaxis_x, haptotaxis_y)
+    
+    RHO_TC += DT * (diff_term - taxis_div)
+    
+    RHO_TC[RHO_TC < 0] = 0
 
 
 def update_molecular_scale():
