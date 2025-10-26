@@ -6,7 +6,7 @@ COLS = 20
 STEPS = 1000
 
 # Time parameters
-DT = 1e-1
+DT = 1200
 DELTA = 2e-5
 
 O2 = np.zeros((ROWS, COLS), dtype=np.float64)
@@ -38,9 +38,9 @@ CELLS = np.zeros((5, ROWS, COLS))
 # 3 - migrating tumor cell
 # 4 - necrotic tumor cell
 start_x, start_y = ROWS // 2, COLS // 2
-CELLS[0, :, 0:1] = 1
-CELLS[2, start_x-1:start_x+2, start_y] = 1
-CELLS[2, start_x, start_y-1:start_y+2] = 1
+CELLS[0, :, start_y:start_y+1] = 1
+CELLS[1, start_x-1:start_x+2, start_y] = 1
+CELLS[1, start_x, start_y-1:start_y+2] = 1
 
 # Cell respiration parameters
 D_O2 = 8e-14        # diffusion coefficient of O2

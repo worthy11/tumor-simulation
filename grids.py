@@ -38,7 +38,7 @@ def set_initial_conditions():
     MMP[:] = 0.
 
     P_INS[:] = 0.
-    P_LUM[:] = 0.
+    P_LUM[:] = p_0
     U_INS[:] = 0.
     U_BLOOD[:] = 0.
 
@@ -210,8 +210,8 @@ def update_energy():
     # TODO: drug_impact = k_ac * c_ac * V_saturation
     V_saturation = V / (V + 1)
     drug_impact = 0
-    active_cells = ((kp_a * V - kc_a * V_saturation - drug_impact) * (V > v_ch))
-    quiescent_cells = -kc_q * (V <= v_ch)
+    active_cells = ((kp_a * V - kc_a * V_saturation - drug_impact) * CELLS[1])
+    quiescent_cells = -kc_q * CELLS[2]
 
     E[:] = active_cells + quiescent_cells
 
@@ -221,6 +221,7 @@ def update_tumor_phenotypes():
         for j in range(COLS):
             vitality = V[i, j]
             energy = E[i, j]
+            print(f"{i} {j}: {vitality} {energy}")
 
             # active
             if CELLS[1, i, j]:
@@ -231,7 +232,6 @@ def update_tumor_phenotypes():
                 
                 # division
                 elif energy > psi_ch:
-                    print('boom')
                     i_min, i_max = max(0, i-1), min(ROWS, i+2)
                     j_min, j_max = max(0, j-1), min(COLS, j+2)
 
@@ -333,7 +333,6 @@ def update_iff(alpha=0.25, tol=1e-6, max_iter=100):
         rhs_EC = L_pEC * (S_VEC / K_insEC) * ((P_LUM - P_INS) - (pi_lum - pi_insEC) * delta_EC) * CELLS[0]
         rhs_TC = L_pTC * (S_VTC / K_insTC) * ((P_LUM - P_INS) - (pi_lum - pi_insTC) * delta_TC) * CELLS[1]
         update = rhs_EC + rhs_TC + laplacian
-        print(np.sum(update))
 
         new_p_ins = P_INS + alpha * update
 
@@ -419,8 +418,6 @@ def update_tissue_scale():
 
 
 def update_tme():
-    print(V)
-    print(E)
     update_molecular_scale()
     update_tissue_scale()
     update_cellular_scale() # is this order correct?

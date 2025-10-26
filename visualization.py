@@ -87,7 +87,7 @@ def animate(update_function, cmap='viridis', vmin=None, vmax=None):
         # print(f"  Quiescent: {quiescent_count} (V: {quiescent_vitality:.2e}, E: {quiescent_energy:.2e})")
         # print(f"  Necrotic: {necrotic_count} (V: {necrotic_vitality:.2e}, E: {necrotic_energy:.2e})")
         
-        plt.pause(DT)
+        plt.pause(0.0001)
     
     plt.ioff()
     plt.show()
