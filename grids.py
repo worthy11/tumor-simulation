@@ -145,11 +145,47 @@ def update_co2():
     CO2[:] = CO2 + DT * (-advection + diffusion - consumption - perfusion)
     CO2[CO2 < 0] = 0
 
-def update_ecm():
-    pass
-
 def update_mmp():
-    pass
+    global MMP
+    advection = diffusion = productionTC = productionEC = excretion = np.zeros((ROWS, COLS), dtype=np.float64)
+
+    Fx = U_INS[0] * MMP
+    Fy = U_INS[1] * MMP
+
+    dFx_dx = (np.roll(Fx, -1, axis=1) - np.roll(Fx, 1, axis=1))
+    dFy_dy = (np.roll(Fy, -1, axis=0) - np.roll(Fy, 1, axis=0))
+
+    divergence = dFx_dx + dFy_dy
+    divergence[:, 0] = divergence[:, 1]
+    divergence[:, -1] = divergence[:, -2]
+    divergence[0, :] = divergence[1, :]
+    divergence[-1, :] = divergence[-2, :]
+    advection = divergence
+
+    laplacian = (np.roll(MMP, 1, axis=0) + np.roll(MMP, -1, axis=0) + np.roll(MMP, 1, axis=1) + np.roll(MMP, -1, axis=1) - 4*MMP) / DELTA**2
+    laplacian[:, 0] = laplacian[:, 1]
+    laplacian[:, -1] = laplacian[:, -2]
+    laplacian[0, :] = laplacian[1, :]
+    laplacian[-1, :] = laplacian[-2, :]
+    diffusion = D_MMP * laplacian
+
+    productionTC = r_MMPTC * V * CELLS[1]
+
+    productionEC = r_MMPEC * CELLS[0]
+
+    excretion = eps_MMP * MMP
+
+    MMP[:] = MMP + DT * (-advection + diffusion + productionTC + productionEC - excretion)
+    MMP[MMP < 0] = 0
+
+def update_ecm():
+    global ECM
+    excretion = np.zeros((ROWS, COLS), dtype=np.float64)
+
+    excretion = eps_ECM * MMP * ECM
+
+    ECM[:] = ECM - DT * excretion
+    ECM[ECM < 0] = 0
 
 def update_vegf():
     pass
