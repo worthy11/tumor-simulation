@@ -1,12 +1,12 @@
 import numpy as np
 
 # Grid parameters
-ROWS = 20
-COLS = 20
+ROWS = 500
+COLS = 500
 STEPS = 1000
 
 # Time parameters
-DT = 1200
+DT = 60
 DELTA = 2e-5
 
 O2 = np.zeros((ROWS, COLS), dtype=np.float64)
@@ -38,7 +38,7 @@ CELLS = np.zeros((5, ROWS, COLS))
 # 3 - migrating tumor cell
 # 4 - necrotic tumor cell
 start_x, start_y = ROWS // 2, COLS // 2
-CELLS[0, :, start_y:start_y+1] = 1
+CELLS[0, :, start_y//2:start_y//2+1] = 1
 CELLS[1, start_x-1:start_x+2, start_y] = 1
 CELLS[1, start_x, start_y-1:start_y+2] = 1
 

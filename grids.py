@@ -213,7 +213,7 @@ def update_energy():
     active_cells = ((kp_a * V - kc_a * V_saturation - drug_impact) * CELLS[1])
     quiescent_cells = -kc_q * CELLS[2]
 
-    E[:] = active_cells + quiescent_cells
+    E[:] = E + DT * (active_cells + quiescent_cells)
 
 def update_tumor_phenotypes():
     global V, E, CELLS
@@ -221,7 +221,6 @@ def update_tumor_phenotypes():
         for j in range(COLS):
             vitality = V[i, j]
             energy = E[i, j]
-            print(f"{i} {j}: {vitality} {energy}")
 
             # active
             if CELLS[1, i, j]:
@@ -232,19 +231,23 @@ def update_tumor_phenotypes():
                 
                 # division
                 elif energy > psi_ch:
-                    i_min, i_max = max(0, i-1), min(ROWS, i+2)
-                    j_min, j_max = max(0, j-1), min(COLS, j+2)
+                    i_min, i_max = max(0, i - 1), min(ROWS - 1, i + 1)
+                    j_min, j_max = max(0, j - 1), min(COLS - 1, j + 1)
 
-                    block = V[i_min:i_max, j_min:j_max].copy()
-                    block_center = (i - i_min, j - j_min)
-                    neighbors = np.delete(block.flatten(), block_center[0] * (j_max - j_min) + block_center[1])
-                    choice = np.argmin(neighbors)
-                    indices = [(i_offset, j_offset) for i_offset in range(i_min, i_max) 
-                             for j_offset in range(j_min, j_max)
-                             if (i_offset, j_offset) != (i, j)]
+                    indices = [(ii, jj)
+                            for ii in range(i_min, i_max + 1)
+                            for jj in range(j_min, j_max + 1)
+                            if not (ii == i and jj == j)]
 
+                    densities = np.array([RHO_TC[ii, jj] for (ii, jj) in indices])
+                    densities_inv = 1 / (densities + 1e-12)
+                    probs = densities_inv / densities_inv.sum()
+
+                    choice = np.random.choice(len(indices), p=probs)
                     chosen_i, chosen_j = indices[choice]
+
                     CELLS[1, chosen_i, chosen_j] = 1
+
             
             # quiescent
             if CELLS[2, i, j]:
@@ -279,7 +282,7 @@ def update_hemodynamics(alpha=0.7, tol=1e-6, max_iter=1000):
 
     P_LUM_new = P_LUM.copy()
 
-    for iteration in range(max_iter):
+    for _ in range(max_iter):
         Q_TFF_EC = S * ((P_LUM - (pi_lum - pi_insEC) * delta_EC)) * CELLS[0]
         Q_TFF_TC = S * ((P_LUM - (pi_lum - pi_insTC) * delta_TC)) * CELLS[1]
         Q_TFF = Q_TFF_EC + Q_TFF_TC
