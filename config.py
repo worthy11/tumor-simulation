@@ -31,14 +31,15 @@ U_BLOOD = np.zeros((2, ROWS, COLS), dtype=np.float64)
 # P = P_LUM-P_INS - transvascular pressure
 
 # Cell types array
-CELLS = np.zeros((5, ROWS, COLS))
+CELLS = np.zeros((5, ROWS, COLS), dtype=np.bool)
 # 0 - endothelial cell
 # 1 - active tumor cell
 # 2 - quiescent tumor cell
 # 3 - migrating tumor cell
 # 4 - necrotic tumor cell
 start_x, start_y = ROWS // 2, COLS // 2
-CELLS[0, :, start_y//2:start_y//2+1] = 1
+# CELLS[0, :, start_y+start_y//2:start_y+start_y//2+5] = 1
+CELLS[0, :, start_y+start_y//2:] = 1
 CELLS[1, start_x-1:start_x+2, start_y] = 1
 CELLS[1, start_x, start_y-1:start_y+2] = 1
 
@@ -72,7 +73,6 @@ eps_MMP = 1.7e-8    # natural decay rate
 eps_ECM = 1.3e-7    # natural decay rate
 ch_ECM = 1.36e-9    # characteristic concentration
 ch_MMP = 1.36e-9    # characteristic concentration
-c_pMMP = 72             # plasma concentration
 
 # Vitality and energy parameters
 phi = 3.67              # proportionality coefficient of consumption/production rate of CR-agents

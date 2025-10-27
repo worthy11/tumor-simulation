@@ -24,25 +24,37 @@ def cells_to_rgb(cells):
 
 def animate(update_function, cmap='viridis', vmin=None, vmax=None):
     plt.ion()
-    fig, axes = plt.subplots(2, 2, figsize=(8, 6))
+    fig, axes = plt.subplots(2, 4, figsize=(18, 10))
     
     # Flatten axes for easier indexing
     axes = axes.flatten()
-    titles = ['O2', 'Glucose', 'CO2', 'Cells']
+    titles = ['O2', 'Glucose', 'CO2', 'MMP', 'ECM', 'Vitality', 'Energy', 'Cells']
     
     ims = []
     for idx, ax in enumerate(axes):
-        if idx < 3:  # Environmental factors
-            data = [grids.O2, grids.G, grids.CO2][idx]
+        if idx == 7:  # Cells
+            cell_rgb = cells_to_rgb(grids.CELLS)
+            im = ax.imshow(cell_rgb, interpolation='nearest', origin='lower')
+        elif idx < 5:  # Environmental factors
+            data = [grids.O2, grids.G, grids.CO2, grids.MMP, grids.ECM][idx]
             vmin_i = np.min(data) if vmin is None else (vmin[idx] if isinstance(vmin, (list, np.ndarray)) else vmin)
             vmax_i = np.max(data) if vmax is None else (vmax[idx] if isinstance(vmax, (list, np.ndarray)) else vmax)
             
             im = ax.imshow(data, cmap=cmap, interpolation='bilinear', 
                            vmin=vmin_i, vmax=vmax_i, origin='lower')
-            plt.colorbar(im, ax=ax, label='Concentration (mM)')
-        else:  # Cells
-            cell_rgb = cells_to_rgb(grids.CELLS)
-            im = ax.imshow(cell_rgb, interpolation='nearest', origin='lower')
+            plt.colorbar(im, ax=ax, label='Concentration')
+        else:  # Vitality or Energy
+            if idx == 5:  # Vitality
+                data = grids.V
+            else:  # Energy
+                data = grids.E
+            
+            vmin_i = np.min(data) if vmin is None else (vmin[idx] if isinstance(vmin, (list, np.ndarray)) else vmin)
+            vmax_i = np.max(data) if vmax is None else (vmax[idx] if isinstance(vmax, (list, np.ndarray)) else vmax)
+            
+            im = ax.imshow(data, cmap=cmap, interpolation='bilinear', 
+                           vmin=vmin_i, vmax=vmax_i, origin='lower')
+            plt.colorbar(im, ax=ax, label='Value')
         
         ax.set_title(f"{titles[idx]} - Step 0")
         ax.set_xlabel('X')
@@ -55,37 +67,23 @@ def animate(update_function, cmap='viridis', vmin=None, vmax=None):
         update_function()
         
         # Update environmental factors
-        for idx in range(3):
-            data = [grids.O2, grids.G, grids.CO2][idx]
+        for idx in range(5):
+            data = [grids.O2, grids.G, grids.CO2, grids.MMP, grids.ECM][idx]
             ims[idx].set_data(data)
             axes[idx].set_title(f"{titles[idx]} - Step {step}")
         
+        # Update Vitality
+        ims[5].set_data(grids.V)
+        axes[5].set_title(f'Vitality - Step {step}')
+        
+        # Update Energy
+        ims[6].set_data(grids.E)
+        axes[6].set_title(f'Energy - Step {step}')
+        
         # Update cells
         cell_rgb = cells_to_rgb(grids.CELLS)
-        ims[3].set_data(cell_rgb)
-        axes[3].set_title(f'Cells - Step {step}')
-        
-        # Print cell statistics
-        active_mask = grids.CELLS[1] > 0
-        quiescent_mask = grids.CELLS[2] > 0
-        necrotic_mask = grids.CELLS[4] > 0
-        
-        active_count = np.sum(active_mask)
-        quiescent_count = np.sum(quiescent_mask)
-        necrotic_count = np.sum(necrotic_mask)
-        
-        active_vitality = np.mean(grids.V[active_mask]) if active_count > 0 else 0
-        quiescent_vitality = np.mean(grids.V[quiescent_mask]) if quiescent_count > 0 else 0
-        necrotic_vitality = np.mean(grids.V[necrotic_mask]) if necrotic_count > 0 else 0
-        
-        active_energy = np.mean(grids.E[active_mask]) if active_count > 0 else 0
-        quiescent_energy = np.mean(grids.E[quiescent_mask]) if quiescent_count > 0 else 0
-        necrotic_energy = np.mean(grids.E[necrotic_mask]) if necrotic_count > 0 else 0
-        
-        # print(f"Step {step}:")
-        # print(f"  Active: {active_count} (V: {active_vitality:.2e}, E: {active_energy:.2e})")
-        # print(f"  Quiescent: {quiescent_count} (V: {quiescent_vitality:.2e}, E: {quiescent_energy:.2e})")
-        # print(f"  Necrotic: {necrotic_count} (V: {necrotic_vitality:.2e}, E: {necrotic_energy:.2e})")
+        ims[7].set_data(cell_rgb)
+        axes[7].set_title(f'Cells - Step {step}')
         
         plt.pause(0.0001)
     

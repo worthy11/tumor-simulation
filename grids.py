@@ -2,33 +2,37 @@ import numpy as np
 from config import *
 from scipy.linalg import solve_banded
 
-def laplacian(Z, dx=1.0, dy=1.0):
-    """Dyskretna Laplasja w 2D z warunkami brzegowymi zerowymi."""
+def laplacian(Z, dx=DELTA, dy=DELTA):
     Z_top    = np.roll(Z,  1, axis=0)
     Z_bottom = np.roll(Z, -1, axis=0)
     Z_left   = np.roll(Z,  1, axis=1)
     Z_right  = np.roll(Z, -1, axis=1)
     lap = (Z_top + Z_bottom + Z_left + Z_right - 4*Z) / (dx*dy)
     
-    lap[0,:] = lap[-1,:] = lap[:,0] = lap[:,-1] = 0
+    lap[0, :] = lap[1, :]
+    lap[-1, :] = lap[-2, :]
+    lap[:, 0] = lap[:, 1]
+    lap[:, -1] = lap[:, -2]
     return lap
 
-def gradient(Z, dx=1.0, dy=1.0):
-    """Oblicza gradient 2D w osiach x i y."""
+def gradient(Z, dx=DELTA, dy=DELTA):
     gx = (np.roll(Z, -1, axis=0) - np.roll(Z, 1, axis=0)) / (2*dx)
     gy = (np.roll(Z, -1, axis=1) - np.roll(Z, 1, axis=1)) / (2*dy)
     return gx, gy
 
-def divergence(px, py, dx=1.0, dy=1.0):
-    """Oblicza dywergencję wektora 2D (px, py)."""
+def divergence(px, py, dx=DELTA, dy=DELTA):
     div_x = (np.roll(px, -1, axis=0) - np.roll(px, 1, axis=0)) / (2*dx)
     div_y = (np.roll(py, -1, axis=1) - np.roll(py, 1, axis=1)) / (2*dy)
     div = div_x + div_y
-    div[0,:] = div[-1,:] = div[:,0] = div[:,-1] = 0
+    
+    div[0, :] = div[1, :]
+    div[-1, :] = div[-2, :]
+    div[:, 0] = div[:, 1]
+    div[:, -1] = div[:, -2]
     return div
 
 def set_initial_conditions():
-    global O2, G, CO2, ECM, VEGF, MMP, P_INS, P_LUM, U_INS, U_BLOOD
+    global O2, G, CO2, ECM, VEGF, MMP, P_INS, P_LUM, U_INS, U_BLOOD, RHO_EC, RHO_TC
     O2[:] = ch_O2
     G[:] = ch_g
     CO2[:] = ch_CO2
@@ -42,69 +46,49 @@ def set_initial_conditions():
     U_INS[:] = 0.
     U_BLOOD[:] = 0.
 
+    RHO_TC[:] = CELLS[1]
+    RHO_EC[:] = CELLS[0]
+
 # -- MOLECULAR SCALE --
 def update_o2():
     global O2, V, CELLS, P_LUM, P_INS, U_INS
-    advection = diffusion = consumption = perfusion = np.zeros((ROWS, COLS), dtype=np.float64)
+    advection = np.zeros((ROWS, COLS), dtype=np.float64)
+    diffusion = np.zeros((ROWS, COLS), dtype=np.float64)
+    consumption = np.zeros((ROWS, COLS), dtype=np.float64)
+    perfusion = np.zeros((ROWS, COLS), dtype=np.float64)
 
     Fx = U_INS[0] * O2
     Fy = U_INS[1] * O2
+    advection = divergence(Fx, Fy)
 
-    dFx_dx = (np.roll(Fx, -1, axis=1) - np.roll(Fx, 1, axis=1))
-    dFy_dy = (np.roll(Fy, -1, axis=0) - np.roll(Fy, 1, axis=0))
-
-    divergence = dFx_dx + dFy_dy
-    divergence[:, 0] = divergence[:, 1]
-    divergence[:, -1] = divergence[:, -2]
-    divergence[0, :] = divergence[1, :]
-    divergence[-1, :] = divergence[-2, :]
-    advection = divergence
-
-    laplacian = (np.roll(O2, 1, axis=0) + np.roll(O2, -1, axis=0) + np.roll(O2, 1, axis=1) + np.roll(O2, -1, axis=1) - 4*O2) / DELTA**2
-    laplacian[:, 0] = laplacian[:, 1]
-    laplacian[:, -1] = laplacian[:, -2]
-    laplacian[0, :] = laplacian[1, :]
-    laplacian[-1, :] = laplacian[-2, :]
-    diffusion = D_O2 * laplacian
+    diffusion = D_O2 * laplacian(O2)
 
     C_O2 = gamma_0 * V
     consumption = C_O2 * CELLS[1]
 
-    vessels = P_LUM > 0 # * CELLS[0]?
+    vessels = (P_LUM > 0) * CELLS[0]
     perfusion[vessels] = f_O2 * d_0/d_c * (P_LUM[vessels]-P_INS[vessels])/P_LUM[vessels]
-    
+
     O2[:] = O2 + DT * (-advection + diffusion - consumption + perfusion)
     O2[O2 < 0] = 0
 
 def update_glucose():
     global O2, G, CO2, V, CELLS, P_LUM, P_INS, U_INS
-    advection = diffusion = consumption = perfusion = np.zeros((ROWS, COLS), dtype=np.float64)
+    advection = np.zeros((ROWS, COLS), dtype=np.float64)
+    diffusion = np.zeros((ROWS, COLS), dtype=np.float64)
+    consumption = np.zeros((ROWS, COLS), dtype=np.float64)
+    perfusion = np.zeros((ROWS, COLS), dtype=np.float64)
 
     Fx = U_INS[0] * G
     Fy = U_INS[1] * G
+    advection = divergence(Fx, Fy)
 
-    dFx_dx = (np.roll(Fx, -1, axis=1) - np.roll(Fx, 1, axis=1))
-    dFy_dy = (np.roll(Fy, -1, axis=0) - np.roll(Fy, 1, axis=0))
-
-    divergence = dFx_dx + dFy_dy
-    divergence[:, 0] = divergence[:, 1]
-    divergence[:, -1] = divergence[:, -2]
-    divergence[0, :] = divergence[1, :]
-    divergence[-1, :] = divergence[-2, :]
-    advection = divergence
-
-    laplacian = (np.roll(G, 1, axis=0) + np.roll(G, -1, axis=0) + np.roll(G, 1, axis=1) + np.roll(G, -1, axis=1) - 4*G) / DELTA**2
-    laplacian[:, 0] = laplacian[:, 1]
-    laplacian[:, -1] = laplacian[:, -2]
-    laplacian[0, :] = laplacian[1, :]
-    laplacian[-1, :] = laplacian[-2, :]
-    diffusion = D_g * laplacian
+    diffusion = D_g * laplacian(G)
 
     C_g = 1/6 * gamma_0 * V
     consumption = C_g * CELLS[1]
 
-    # TODO: o co chodzi z d_v w tym równaniu? na razie d_0
-    vessels = P_LUM > 0 # * CELLS[0]?
+    vessels = (P_LUM > 0) * CELLS[0]
     perfusion[vessels] = ((f_g * G / (G + km_g)) * d_0/d_c)[vessels]
     perfusion[vessels] *= (P_LUM[vessels]-P_INS[vessels])/P_LUM[vessels]
 
@@ -113,33 +97,21 @@ def update_glucose():
 
 def update_co2():
     global O2, G, CO2, V, CELLS, P_LUM, P_INS, U_INS
-    advection = diffusion = consumption = perfusion = np.zeros((ROWS, COLS), dtype=np.float64)
+    advection = np.zeros((ROWS, COLS), dtype=np.float64)
+    diffusion = np.zeros((ROWS, COLS), dtype=np.float64)
+    consumption = np.zeros((ROWS, COLS), dtype=np.float64)
+    perfusion = np.zeros((ROWS, COLS), dtype=np.float64)
 
     Fx = U_INS[0] * CO2
     Fy = U_INS[1] * CO2
+    advection = divergence(Fx, Fy)
 
-    dFx_dx = (np.roll(Fx, -1, axis=1) - np.roll(Fx, 1, axis=1))
-    dFy_dy = (np.roll(Fy, -1, axis=0) - np.roll(Fy, 1, axis=0))
-
-    divergence = dFx_dx + dFy_dy
-    divergence[:, 0] = divergence[:, 1]
-    divergence[:, -1] = divergence[:, -2]
-    divergence[0, :] = divergence[1, :]
-    divergence[-1, :] = divergence[-2, :]
-    advection = divergence
-
-    laplacian = (np.roll(CO2, 1, axis=0) + np.roll(CO2, -1, axis=0) + np.roll(CO2, 1, axis=1) + np.roll(CO2, -1, axis=1) - 4*CO2) / DELTA**2
-    laplacian[:, 0] = laplacian[:, 1]
-    laplacian[:, -1] = laplacian[:, -2]
-    laplacian[0, :] = laplacian[1, :]
-    laplacian[-1, :] = laplacian[-2, :]
-    diffusion = D_CO2 * laplacian
+    diffusion = D_CO2 * laplacian(CO2)
 
     C_CO2 = -gamma_0 * V
     consumption = C_CO2 * CELLS[1]
 
-    # TODO: o co chodzi z d_v w tym równaniu? na razie d_0
-    vessels = P_LUM > 0 # * CELLS[0]?
+    vessels = (P_LUM > 0) * CELLS[0]
     perfusion[vessels] = f_CO2 * d_0/d_c * (P_LUM[vessels]-P_INS[vessels])/P_LUM[vessels]
 
     CO2[:] = CO2 + DT * (-advection + diffusion - consumption - perfusion)
@@ -147,27 +119,17 @@ def update_co2():
 
 def update_mmp():
     global MMP
-    advection = diffusion = productionTC = productionEC = excretion = np.zeros((ROWS, COLS), dtype=np.float64)
+    advection = np.zeros((ROWS, COLS), dtype=np.float64)
+    diffusion = np.zeros((ROWS, COLS), dtype=np.float64)
+    productionTC = np.zeros((ROWS, COLS), dtype=np.float64)
+    productionEC = np.zeros((ROWS, COLS), dtype=np.float64)
+    excretion = np.zeros((ROWS, COLS), dtype=np.float64)
 
     Fx = U_INS[0] * MMP
     Fy = U_INS[1] * MMP
+    advection = divergence(Fx, Fy)
 
-    dFx_dx = (np.roll(Fx, -1, axis=1) - np.roll(Fx, 1, axis=1))
-    dFy_dy = (np.roll(Fy, -1, axis=0) - np.roll(Fy, 1, axis=0))
-
-    divergence = dFx_dx + dFy_dy
-    divergence[:, 0] = divergence[:, 1]
-    divergence[:, -1] = divergence[:, -2]
-    divergence[0, :] = divergence[1, :]
-    divergence[-1, :] = divergence[-2, :]
-    advection = divergence
-
-    laplacian = (np.roll(MMP, 1, axis=0) + np.roll(MMP, -1, axis=0) + np.roll(MMP, 1, axis=1) + np.roll(MMP, -1, axis=1) - 4*MMP) / DELTA**2
-    laplacian[:, 0] = laplacian[:, 1]
-    laplacian[:, -1] = laplacian[:, -2]
-    laplacian[0, :] = laplacian[1, :]
-    laplacian[-1, :] = laplacian[-2, :]
-    diffusion = D_MMP * laplacian
+    diffusion = D_MMP * laplacian(MMP)
 
     productionTC = r_MMPTC * V * CELLS[1]
 
@@ -239,10 +201,13 @@ def update_tumor_phenotypes():
                             for jj in range(j_min, j_max + 1)
                             if not (ii == i and jj == j)]
 
+                    can_divide = not all([CELLS[1, ii, jj] for (ii, jj) in indices])
+                    if not can_divide:
+                        continue
+                    
                     densities = np.array([RHO_TC[ii, jj] for (ii, jj) in indices])
-                    densities_inv = 1 / (densities + 1e-12)
+                    densities_inv = 1 / np.where(densities != 0, densities, np.finfo(float).eps)
                     probs = densities_inv / densities_inv.sum()
-
                     choice = np.random.choice(len(indices), p=probs)
                     chosen_i, chosen_j = indices[choice]
 
@@ -378,14 +343,14 @@ def update_angiogenesis():
 
 def update_tumor_growth():
     global RHO_TC, ECM
-    diff_term = D_TC * laplacian(RHO_TC)
+    diff_term = D_TC * laplacian(RHO_TC, dx=DELTA, dy=DELTA)
     
-    grad_ce_x, grad_ce_y = gradient(ECM)
+    grad_ce_x, grad_ce_y = gradient(ECM, dx=DELTA, dy=DELTA)
     
     haptotaxis_x = beta_h * RHO_TC * grad_ce_x
     haptotaxis_y = beta_h * RHO_TC * grad_ce_y
     
-    taxis_div = divergence(haptotaxis_x, haptotaxis_y)
+    taxis_div = divergence(haptotaxis_x, haptotaxis_y, dx=DELTA, dy=DELTA)
     
     RHO_TC[:] = RHO_TC + DT * (diff_term - taxis_div)
     RHO_TC[RHO_TC < 0] = 0
