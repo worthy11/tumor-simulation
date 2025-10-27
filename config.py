@@ -15,6 +15,9 @@ CO2 = np.zeros((ROWS, COLS), dtype=np.float64)
 ECM = np.zeros((ROWS, COLS), dtype=np.float64)
 MMP = np.zeros((ROWS, COLS), dtype=np.float64)
 VEGF = np.zeros((ROWS, COLS), dtype=np.float64)
+VEGFR2 = np.zeros((2, ROWS, COLS), dtype=np.float64)
+# 0 - free (unbound) VEGFR-2 receptors
+# 1 - active (bound) VEGFR-2 receptors
 V = np.zeros((ROWS, COLS), dtype=np.float64)
 E = np.zeros((ROWS, COLS), dtype=np.float64)
 P_INS = np.zeros((ROWS, COLS), dtype=np.float64)
@@ -64,6 +67,7 @@ k_minus_VEGF = 6.3e-5  # unbinding rate from VEGFR-2
 eps_VEGF = 2.78e-7  # natural decay rate
 ch_VEGF = 1.1e-8    # characteristic concentration
 c_pVEGF = 5.78          # plasma concentration
+f_VEGF = 1e-20     # flux of VEGF from blood to TME
 
 # MMP/ECM parameters
 D_MMP = 1e-15       # diffusion coefficient

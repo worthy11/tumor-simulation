@@ -150,10 +150,52 @@ def update_ecm():
     ECM[ECM < 0] = 0
 
 def update_vegf():
-    pass
+    global VEGF
+    advection = np.zeros((ROWS, COLS), dtype=np.float64)
+    diffusion = np.zeros((ROWS, COLS), dtype=np.float64)
+    production = np.zeros((ROWS, COLS), dtype=np.float64)
+    perfusion = np.zeros((ROWS, COLS), dtype=np.float64)
+    binding = np.zeros((ROWS, COLS), dtype=np.float64)
+    unbinding = np.zeros((ROWS, COLS), dtype=np.float64)
+    excretion = np.zeros((ROWS, COLS), dtype=np.float64)
+
+    Fx = U_INS[0] * VEGF
+    Fy = U_INS[1] * VEGF
+    advection = divergence(Fx, Fy)
+
+    diffusion = D_VEGF * laplacian(VEGF)
+
+    production = (ch_CO2 > CO2) * (1 - CO2 / ch_CO2) * r_VEGF * CELLS[1]
+
+    perfusion = f_VEGF * d_0 / d_c * CELLS[0]
+
+    binding = k_plus_VEGF * VEGFR2[0] * VEGF
+
+    unbinding = k_minus_VEGF * VEGFR2[1]
+
+    excretion = eps_VEGF * VEGF
+
+    VEGF[:] = VEGF + DT * (-advection + diffusion + production - perfusion - binding + unbinding - excretion)
+    VEGF[VEGF < 0] = 0
 
 def update_vegfr2():
-    pass  # Not implemented yet
+    global VEGFR2
+    loss_free = np.zeros((ROWS, COLS), dtype=np.float64)
+    gain_free = np.zeros((ROWS, COLS), dtype=np.float64)
+    production_active = np.zeros((ROWS, COLS), dtype=np.float64)
+    loss_active = np.zeros((ROWS, COLS), dtype=np.float64)
+
+    loss_free = k_plus_VEGF * VEGFR2[0] * VEGF
+    gain_free = k_minus_VEGF * VEGFR2[1]
+
+    production_active = k_plus_VEGF * VEGFR2[0] * VEGF
+    loss_active = k_minus_VEGF * VEGFR2[1]
+
+    VEGFR2[0][:] = VEGFR2[0] + DT * (-loss_free + gain_free)
+    VEGFR2[1][:] = VEGFR2[1] + DT * (production_active - loss_active)
+    
+    VEGFR2[0][VEGFR2[0] < 0] = 0
+    VEGFR2[1][VEGFR2[1] < 0] = 0
 
 def update_treatment():
     pass
