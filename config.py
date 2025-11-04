@@ -34,15 +34,23 @@ U_BLOOD = np.zeros((2, ROWS, COLS), dtype=np.float64)
 # P = P_LUM-P_INS - transvascular pressure
 
 # Cell types array
-CELLS = np.zeros((5, ROWS, COLS), dtype=np.bool)
+CELLS = np.zeros((5, ROWS, COLS), dtype=bool)
 # 0 - endothelial cell
 # 1 - active tumor cell
 # 2 - quiescent tumor cell
 # 3 - migrating tumor cell
 # 4 - necrotic tumor cell
 start_x, start_y = ROWS // 2, COLS // 2
-# CELLS[0, :, start_y+start_y//2:start_y+start_y//2+5] = 1
-CELLS[0, :, start_y+start_y//2:] = 1
+
+# Create a thin vertical vein at ~2/3 of the grid width.
+# Grid points occupied by the vein are marked in the endothelial layer
+# (CELLS[0] == True). Tumor cells (CELLS[1]) are still allowed to
+# appear on the same grid points (layers are independent boolean masks).
+VEIN_COL = int(COLS * 2 / 3)
+VEIN_WIDTH = 3  # thin vein (number of columns)
+col_start = max(0, VEIN_COL - VEIN_WIDTH // 2)
+col_end = min(COLS, VEIN_COL + VEIN_WIDTH // 2 + 1)
+CELLS[0, :, col_start:col_end] = True
 CELLS[1, start_x-1:start_x+2, start_y] = 1
 CELLS[1, start_x, start_y-1:start_y+2] = 1
 
