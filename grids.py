@@ -2,6 +2,9 @@ import numpy as np
 from config import *
 from scipy.linalg import solve_banded
 
+# Buffer for cells removed at entry points in the current step
+REMOVED_ENTRY_CELLS = []  # list of (i, j)
+
 def laplacian(Z, dx=DELTA, dy=DELTA):
     Z_top    = np.roll(Z,  1, axis=0)
     Z_bottom = np.roll(Z, -1, axis=0)
@@ -397,6 +400,48 @@ def update_tumor_growth():
     RHO_TC[:] = RHO_TC + DT * (diff_term - taxis_div)
     RHO_TC[RHO_TC < 0] = 0
 
+# Migration update functions
+def vessel_entry():
+    global CELLS, RHO_TC, REMOVED_ENTRY_CELLS
+    REMOVED_ENTRY_CELLS = []
+    overlap = CELLS[1] & CELLS[5]
+    if not overlap.any():
+        return
+
+    coords = np.argwhere(overlap)
+    for (i, j) in coords:
+        if np.random.random() < 0.7:
+            neighbors = [(i, j), (i-1, j), (i+1, j), (i, j-1), (i, j+1)]
+            for ii, jj in neighbors:
+                if 0 <= ii < ROWS and 0 <= jj < COLS:
+                    CELLS[1, ii, jj] = False
+                    RHO_TC[ii, jj] = 0
+            REMOVED_ENTRY_CELLS.append((i, j))
+
+
+def tissue_entry():
+    global CELLS, RHO_TC, REMOVED_ENTRY_CELLS
+    if not REMOVED_ENTRY_CELLS:
+        return
+
+    entry_points = np.argwhere(CELLS[5])
+    if entry_points.size == 0:
+        REMOVED_ENTRY_CELLS = []
+        return
+
+    for (i, j) in REMOVED_ENTRY_CELLS:
+        if np.random.random() < 0.4:
+            candidates = [(ii, jj) for (ii, jj) in entry_points
+                          if (ii != i or jj != j) and not CELLS[1, ii, jj]]
+            if not candidates:
+                candidates = [(ii, jj) for (ii, jj) in entry_points if (ii != i or jj != j)]
+
+            if candidates:
+                ni, nj = candidates[np.random.randint(len(candidates))]
+                CELLS[1, ni, nj] = True
+                RHO_TC[ni, nj] = 1.0
+
+    REMOVED_ENTRY_CELLS = []
 
 def update_molecular_scale():
     update_o2()
@@ -425,7 +470,9 @@ def update_tissue_scale():
 
     update_tumor_growth()
     update_angiogenesis()
-
+    
+    vessel_entry()
+    tissue_entry()
 
 def update_tme():
     update_molecular_scale()

@@ -34,23 +34,55 @@ U_BLOOD = np.zeros((2, ROWS, COLS), dtype=np.float64)
 # P = P_LUM-P_INS - transvascular pressure
 
 # Cell types array
-CELLS = np.zeros((5, ROWS, COLS), dtype=bool)
+CELLS = np.zeros((6, ROWS, COLS), dtype=bool)
 # 0 - endothelial cell
 # 1 - active tumor cell
 # 2 - quiescent tumor cell
 # 3 - migrating tumor cell
 # 4 - necrotic tumor cell
-start_x, start_y = ROWS // 2, COLS // 2
+# 5 - vein entry points
 
 # Create a thin vertical vein at ~2/3 of the grid width.
 # Grid points occupied by the vein are marked in the endothelial layer
 # (CELLS[0] == True). Tumor cells (CELLS[1]) are still allowed to
 # appear on the same grid points (layers are independent boolean masks).
-VEIN_COL = int(COLS * 2 / 3)
+VEIN_COL = int(COLS * 3 / 5)
 VEIN_WIDTH = 3  # thin vein (number of columns)
 col_start = max(0, VEIN_COL - VEIN_WIDTH // 2)
 col_end = min(COLS, VEIN_COL + VEIN_WIDTH // 2 + 1)
 CELLS[0, :, col_start:col_end] = True
+CELLS[0, col_start:col_end, :] = True
+# Vein entry points: cover full vein thickness at intersection + 3 other spots
+vein_width = col_end - col_start
+half_w = max(1, vein_width // 2)
+vein_mid = (col_start + col_end) // 2
+
+# Helper to clamp ranges
+def _clamp(a, lo, hi):
+	return max(lo, min(hi, a))
+
+# 1) Intersection of the two veins (square patch thickness x thickness)
+CELLS[5, col_start:col_end, col_start:col_end] = True
+
+# 2) On the vertical vein near the top (square patch centered at (r_top, vein_mid))
+r_top_center = ROWS // 4
+r0 = _clamp(r_top_center - half_w, 0, ROWS)
+r1 = _clamp(r_top_center + half_w + (vein_width % 2), 0, ROWS)
+CELLS[5, r0:r1, col_start:col_end] = True
+
+# 3) On the vertical vein near the bottom (square patch centered at (r_bot, vein_mid))
+r_bot_center = (3 * ROWS) // 4
+r0 = _clamp(r_bot_center - half_w, 0, ROWS)
+r1 = _clamp(r_bot_center + half_w + (vein_width % 2), 0, ROWS)
+CELLS[5, r0:r1, col_start:col_end] = True
+
+# 4) On the horizontal vein towards the left (square patch centered at (vein_mid, c_left))
+c_left_center = COLS // 4
+c0 = _clamp(c_left_center - half_w, 0, COLS)
+c1 = _clamp(c_left_center + half_w + (vein_width % 2), 0, COLS)
+CELLS[5, col_start:col_end, c0:c1] = True
+
+start_x, start_y = ROWS // 2, COLS // 2
 CELLS[1, start_x-1:start_x+2, start_y] = 1
 CELLS[1, start_x, start_y-1:start_y+2] = 1
 
