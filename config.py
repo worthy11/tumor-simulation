@@ -1,4 +1,5 @@
 import numpy as np
+import cv2
 
 def _draw_segment(mask, start, end, radius):
     r0, c0 = start
@@ -106,9 +107,139 @@ def generate_vessel_pattern(rows, cols, seed=7):
 
     return vessels
 
+
+# --- Vein entry point utilities ---
+def _skeletonize_binary(mask_bool: np.ndarray) -> np.ndarray:
+    """Return a 1-pixel wide skeleton of the binary mask as a boolean array.
+
+    Uses a standard morphological skeletonization (erode->open->subtract) loop
+    with a 3x3 cross structuring element, available in base OpenCV.
+    """
+    img = (mask_bool.astype(np.uint8) * 255)
+    skel = np.zeros_like(img)
+    element = cv2.getStructuringElement(cv2.MORPH_CROSS, (3, 3))
+
+    # Iteratively erode and accumulate the residuals until fully eroded
+    while True:
+        eroded = cv2.erode(img, element)
+        opened = cv2.dilate(eroded, element)
+        temp = cv2.subtract(img, opened)
+        skel = cv2.bitwise_or(skel, temp)
+        img = eroded
+        if cv2.countNonZero(img) == 0:
+            break
+
+    return skel > 0
+
+
+def _junctions_and_endpoints(skel_bool: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Detect junction (degree >=3) and endpoint (degree==1) pixels on a skeleton.
+
+    Returns two boolean masks (junctions, endpoints).
+    """
+    sk = skel_bool.astype(np.uint8)
+    kernel = np.ones((3, 3), dtype=np.uint8)
+    # neighbor_count includes the center pixel itself
+    neighbor_count = cv2.filter2D(sk, -1, kernel, borderType=cv2.BORDER_CONSTANT)
+    deg = neighbor_count - sk
+    junctions = (sk == 1) & (deg >= 3)
+    endpoints = (sk == 1) & (deg == 1)
+    return junctions, endpoints
+
+
+def _select_spaced_points(coords: np.ndarray, min_dist: float, max_points: int | None, seed: int = 7) -> list[tuple[int, int]]:
+    """Greedy selection of points from coords (Nx2 [r,c]) keeping >= min_dist spacing.
+
+    Uses a coarse grid to make checks O(1) on average.
+    """
+    if coords.size == 0:
+        return []
+    rng = np.random.default_rng(seed)
+    order = rng.permutation(len(coords))
+    selected: list[tuple[int, int]] = []
+    cell_size = max(1, int(min_dist))
+    buckets: dict[tuple[int, int], list[tuple[int, int]]] = {}
+
+    def cell_idx(r: int, c: int) -> tuple[int, int]:
+        return (r // cell_size, c // cell_size)
+
+    min_dist_sq = float(min_dist) * float(min_dist)
+    for i in order:
+        r, c = int(coords[i, 0]), int(coords[i, 1])
+        ci_r, ci_c = cell_idx(r, c)
+        ok = True
+        for dr in (-1, 0, 1):
+            for dc in (-1, 0, 1):
+                nb = buckets.get((ci_r + dr, ci_c + dc))
+                if not nb:
+                    continue
+                for pr, pc in nb:
+                    if (r - pr) * (r - pr) + (c - pc) * (c - pc) < min_dist_sq:
+                        ok = False
+                        break
+                if not ok:
+                    break
+            if not ok:
+                break
+        if ok:
+            selected.append((r, c))
+            buckets.setdefault((ci_r, ci_c), []).append((r, c))
+            if max_points is not None and len(selected) >= max_points:
+                break
+    return selected
+
+
+def make_vein_entry_points(
+    vein_mask_bool: np.ndarray,
+    seed: int = 7,
+    min_dist: float = 30.0,
+    max_intersections: int = 200,
+    max_additional: int = 150,
+    include_endpoints: bool = False,
+) -> list[tuple[int, int]]:
+    """Generate vein entry points predominantly at crossings, plus some along vessels.
+
+    Parameters
+    - vein_mask_bool: True for vessel pixels
+    - min_dist: minimum spacing between chosen entry points (pixels)
+    - max_intersections: cap on number of intersection-based points
+    - max_additional: additional points sampled along skeleton away from intersections
+    - include_endpoints: also allow endpoints with spacing
+    """
+    skel = _skeletonize_binary(vein_mask_bool)
+    junctions, endpoints = _junctions_and_endpoints(skel)
+
+    # 1) Prefer junctions (crossings)
+    j_coords = np.column_stack(np.where(junctions))
+    chosen = _select_spaced_points(j_coords, min_dist=min_dist, max_points=max_intersections, seed=seed)
+
+    # 2) Optionally add endpoints (still spaced from chosen)
+    if include_endpoints and max_additional > 0:
+        # Mask out vicinity of already chosen points using a distance transform
+        mask_far = np.ones(vein_mask_bool.shape, dtype=np.uint8)
+        for r, c in chosen:
+            mask_far[r, c] = 0
+        dist = cv2.distanceTransform(mask_far, distanceType=cv2.DIST_L2, maskSize=3)
+        ep_coords = np.column_stack(np.where(endpoints & (dist >= min_dist)))
+        add_ep = _select_spaced_points(ep_coords, min_dist=min_dist, max_points=max_additional, seed=seed + 1)
+        chosen.extend(add_ep)
+        max_additional = max(0, max_additional - len(add_ep))
+
+    # 3) Add some interior points along skeleton, away from intersections
+    if max_additional > 0:
+        mask_far = np.ones(vein_mask_bool.shape, dtype=np.uint8)
+        for r, c in chosen:
+            mask_far[r, c] = 0
+        dist = cv2.distanceTransform(mask_far, distanceType=cv2.DIST_L2, maskSize=3)
+        sk_coords = np.column_stack(np.where(skel & (dist >= min_dist)))
+        add_sk = _select_spaced_points(sk_coords, min_dist=min_dist, max_points=max_additional, seed=seed + 2)
+        chosen.extend(add_sk)
+
+    return chosen
+
 # Grid parameters
-ROWS = 500
-COLS = 500
+ROWS = 1000
+COLS = 1000
 DELTA = 2e-5
 
 # Time parameters
@@ -150,45 +281,48 @@ CELLS = np.zeros((6, ROWS, COLS), dtype=bool)
 # 4 - necrotic tumor cell
 # 5 - vein entry points
 
-# Create a thin vertical vein at ~2/3 of the grid width.
-# Grid points occupied by the vein are marked in the endothelial layer
-# (CELLS[0] == True). Tumor cells (CELLS[1]) are still allowed to
-# appear on the same grid points (layers are independent boolean masks).
-VEIN_COL = int(COLS * 3 / 5)
-VEIN_WIDTH = 3  # thin vein (number of columns)
-col_start = max(0, VEIN_COL - VEIN_WIDTH // 2)
-col_end = min(COLS, VEIN_COL + VEIN_WIDTH // 2 + 1)
-CELLS[0, :, col_start:col_end] = True
-CELLS[0, col_start:col_end, :] = True
-# Vein entry points: cover full vein thickness at intersection + 3 other spots
-vein_width = col_end - col_start
-half_w = max(1, vein_width // 2)
-vein_mid = (col_start + col_end) // 2
 
-# Helper to clamp ranges
-def _clamp(a, lo, hi):
-	return max(lo, min(hi, a))
+VEINS = cv2.imread('vein_pattern.jpg', cv2.IMREAD_GRAYSCALE)
+if VEINS is None:
+    vessels_bool = generate_vessel_pattern(ROWS, COLS, seed=7)
+    VEINS = np.where(vessels_bool, 0, 255).astype(np.uint8)
 
-# 1) Intersection of the two veins (square patch thickness x thickness)
-CELLS[5, col_start:col_end, col_start:col_end] = True
+# Boolean mask: True where vessel lumen/wall is present
+VEIN_MASK = VEINS < 128
+CELLS[0] = VEIN_MASK
 
-# 2) On the vertical vein near the top (square patch centered at (r_top, vein_mid))
-r_top_center = ROWS // 4
-r0 = _clamp(r_top_center - half_w, 0, ROWS)
-r1 = _clamp(r_top_center + half_w + (vein_width % 2), 0, ROWS)
-CELLS[5, r0:r1, col_start:col_end] = True
+# Create vein entry points (CELLS[5]) at crossings and selected interior spots
+ENTRY_SEED = 42
+# Increase spacing and lower caps to reduce total number of entry points
+ENTRY_MIN_DIST = 45.0
+MAX_INTERSECTIONS = 150
+MAX_ADDITIONAL = 60
+INCLUDE_ENDPOINTS = False
 
-# 3) On the vertical vein near the bottom (square patch centered at (r_bot, vein_mid))
-r_bot_center = (3 * ROWS) // 4
-r0 = _clamp(r_bot_center - half_w, 0, ROWS)
-r1 = _clamp(r_bot_center + half_w + (vein_width % 2), 0, ROWS)
-CELLS[5, r0:r1, col_start:col_end] = True
+entry_points = make_vein_entry_points(
+    VEIN_MASK,
+    seed=ENTRY_SEED,
+    min_dist=ENTRY_MIN_DIST,
+    max_intersections=MAX_INTERSECTIONS,
+    max_additional=MAX_ADDITIONAL,
+    include_endpoints=INCLUDE_ENDPOINTS,
+)
 
-# 4) On the horizontal vein towards the left (square patch centered at (vein_mid, c_left))
-c_left_center = COLS // 4
-c0 = _clamp(c_left_center - half_w, 0, COLS)
-c1 = _clamp(c_left_center + half_w + (vein_width % 2), 0, COLS)
-CELLS[5, col_start:col_end, c0:c1] = True
+if entry_points:
+    rr, cc = zip(*entry_points)
+    CELLS[5, np.array(rr, dtype=int), np.array(cc, dtype=int)] = True
+    # Slightly enlarge (dilate) the entry point regions to make them more accessible
+    ENTRY_POINT_RADIUS = 3  # slightly larger regions
+    ep_mask = CELLS[5].astype(np.uint8)
+    kernel = cv2.getStructuringElement(
+        cv2.MORPH_ELLIPSE, (2 * ENTRY_POINT_RADIUS + 1, 2 * ENTRY_POINT_RADIUS + 1)
+    )
+    ep_mask = cv2.dilate(ep_mask, kernel)
+    # Ensure enlarged regions remain within vein lumen
+    ep_mask &= VEIN_MASK.astype(np.uint8)
+    CELLS[5] = ep_mask.astype(bool)
+
+
 
 start_x, start_y = ROWS // 2, COLS // 2
 CELLS[1, start_x-1:start_x+2, start_y] = 1

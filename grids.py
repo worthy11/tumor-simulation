@@ -205,8 +205,7 @@ def update_vitality():
     glucose_component = G / (G + ch_g)
     co2_component = np.exp(-5 * (CO2 / ch_CO2 - 1)**4 * (CO2 - ch_CO2 > 0))
 
-    V[:] = o2_component * glucose_component * co2_component
-    V[V < 0] = 0.
+    V[:] = np.abs(o2_component * glucose_component * co2_component)
 
 def update_energy():
     global V, E
@@ -268,7 +267,7 @@ def update_tumor_growth():
     global RHO_TC, MMP
     diff_term = D_TC * laplacian(RHO_TC)
     
-    grad_ce_x, grad_ce_y = gradient(ECM)
+    grad_ce_x, grad_ce_y = gradient(V)
     
     haptotaxis_x = beta_h * grad_ce_x
     haptotaxis_y = beta_h * grad_ce_y
