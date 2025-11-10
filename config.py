@@ -1,13 +1,120 @@
 import numpy as np
 
+def _draw_segment(mask, start, end, radius):
+    r0, c0 = start
+    r1, c1 = end
+
+    min_r = max(0, int(np.floor(min(r0, r1) - radius - 1)))
+    max_r = min(mask.shape[0] - 1, int(np.ceil(max(r0, r1) + radius + 1)))
+    min_c = max(0, int(np.floor(min(c0, c1) - radius - 1)))
+    max_c = min(mask.shape[1] - 1, int(np.ceil(max(c0, c1) + radius + 1)))
+
+    if min_r > max_r or min_c > max_c:
+        return
+
+    rr = np.arange(min_r, max_r + 1, dtype=np.float64)
+    cc = np.arange(min_c, max_c + 1, dtype=np.float64)
+    R, C = np.meshgrid(rr, cc, indexing="ij")
+
+    ab = np.array([r1 - r0, c1 - c0], dtype=np.float64)
+    ab_norm_sq = np.dot(ab, ab)
+
+    if ab_norm_sq == 0:
+        dist = np.sqrt((R - r0) ** 2 + (C - c0) ** 2)
+    else:
+        ap_row = R - r0
+        ap_col = C - c0
+        t = (ap_row * ab[0] + ap_col * ab[1]) / ab_norm_sq
+        t = np.clip(t, 0.0, 1.0)
+
+        proj_row = r0 + t * ab[0]
+        proj_col = c0 + t * ab[1]
+        dist = np.sqrt((R - proj_row) ** 2 + (C - proj_col) ** 2)
+
+    mask[min_r : max_r + 1, min_c : max_c + 1] |= dist <= radius
+
+
+def _draw_polyline(mask, points, radius):
+    if len(points) < 2:
+        return
+    for start, end in zip(points[:-1], points[1:]):
+        _draw_segment(mask, start, end, radius)
+
+
+def generate_vessel_pattern(rows, cols, seed=7):
+    rng = np.random.default_rng(seed)
+    vessels = np.zeros((rows, cols), dtype=bool)
+    major_paths = []
+
+    def add_major_trunk(amplitude, phase, thickness, orientation="horizontal"):
+        num_points = 320
+        t = np.linspace(0.0, 1.0, num_points)
+        if orientation == "horizontal":
+            r = rows * 0.2 + t * rows * 0.6 + amplitude * np.sin(2 * np.pi * (t + phase))
+            c = t * (cols - 1)
+        else:
+            r = t * (rows - 1)
+            c = cols * 0.25 + t * cols * 0.5 + amplitude * np.sin(2 * np.pi * (t + phase))
+        points = np.stack([np.clip(r, 0, rows - 1), np.clip(c, 0, cols - 1)], axis=1)
+        major_paths.append(points)
+        _draw_polyline(vessels, points, thickness)
+
+    add_major_trunk(amplitude=60.0, phase=0.1, thickness=5.5, orientation="horizontal")
+    add_major_trunk(amplitude=45.0, phase=0.45, thickness=4.8, orientation="vertical")
+
+    if major_paths:
+        samples = []
+        for path in major_paths:
+            idx = np.linspace(0, len(path) - 1, num=90, dtype=int)
+            samples.append(path[idx])
+        anchor_points = np.concatenate(samples, axis=0)
+
+        branch_count = 8
+        for _ in range(branch_count):
+            anchor = anchor_points[rng.integers(0, len(anchor_points))]
+            length = rng.uniform(110.0, 180.0)
+            angle = rng.uniform(-1.3, 1.3)
+            curvature = rng.uniform(0.6, 1.6)
+            wobble = rng.uniform(12.0, 28.0)
+            base_t = np.linspace(0.0, 1.0, int(max(10, length // 8)))
+
+            dr = length * np.sin(angle) * base_t
+            dc = length * np.cos(angle) * base_t
+
+            modulation_phase = rng.uniform(0.0, 2.0 * np.pi)
+            modulation = np.sin(curvature * np.pi * base_t + modulation_phase)
+            jitter_r = wobble * modulation
+            jitter_c = wobble * np.cos(curvature * np.pi * base_t + modulation_phase)
+
+            branch_r = np.clip(anchor[0] + dr + jitter_r, 0, rows - 1)
+            branch_c = np.clip(anchor[1] + dc + 0.4 * jitter_c, 0, cols - 1)
+            branch_points = np.stack([branch_r, branch_c], axis=1)
+            _draw_polyline(vessels, branch_points, radius=rng.uniform(1.6, 2.6))
+
+    loop_count = 3
+    for _ in range(loop_count):
+        center_r = rng.uniform(rows * 0.2, rows * 0.8)
+        center_c = rng.uniform(cols * 0.2, cols * 0.8)
+        radius_major = rng.uniform(35.0, 55.0)
+        radius_minor = radius_major * rng.uniform(0.55, 0.8)
+        thickness = rng.uniform(1.8, 2.8)
+        angles = np.linspace(0.0, 2.0 * np.pi, 120)
+        loop_r = np.clip(center_r + radius_major * np.sin(angles), 0, rows - 1)
+        loop_c = np.clip(center_c + radius_minor * np.cos(angles), 0, cols - 1)
+        loop_points = np.stack([loop_r, loop_c], axis=1)
+        _draw_polyline(vessels, loop_points, thickness)
+
+    return vessels
+
 # Grid parameters
 ROWS = 500
 COLS = 500
-STEPS = 1000
+DELTA = 2e-5
 
 # Time parameters
-DT = 60
-DELTA = 2e-5
+DT = 60*12
+# DT = 1
+STEPS = 1000
 
 O2 = np.zeros((ROWS, COLS), dtype=np.float64)
 G = np.zeros((ROWS, COLS), dtype=np.float64)
@@ -33,6 +140,7 @@ U_BLOOD = np.zeros((2, ROWS, COLS), dtype=np.float64)
 # U_BLOOD - intravascular blood flow velocity
 # P = P_LUM-P_INS - transvascular pressure
 
+import random
 # Cell types array
 CELLS = np.zeros((6, ROWS, COLS), dtype=bool)
 # 0 - endothelial cell
@@ -127,12 +235,11 @@ kp_a = 1                # coefficient of production rate of cellular energy by a
 kc_a = 1                # max consumption rate of cellular energy by active tumor cells
 
 # Tumor growth parameters
-alpha = 1               # saturation coefficient of chemotaxis
+D_EC = 1e-13       # diffusivity of tip epithelial cells
+D_TC = 1e-13        # diffusivity of tumor cells
 beta_c = 0.26           # weight coefficient of chemotaxis
 beta_h = 0.1            # weight coefficient of haptotaxis
-beta_COP = 0.3          # weight coefficient of cooption
-D_tEC = 1e-13       # diffusivity of tip epithelial cells
-D_TC = 1e-13        # diffusivity of tumor cells
+alpha = 1               # saturation coefficient of chemotaxis
 
 # Hemodynamics/TME parameters (HC = hydraulic conductivity)
 K_insEC = 9e-15  # interstitial HC of TME for normal tissue
