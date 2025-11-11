@@ -250,6 +250,8 @@ def update_tumor_phenotypes():
                     chosen_i, chosen_j = indices[choice]
 
                     CELLS[1, chosen_i, chosen_j] = 1
+                    # Daughter cell inherits subtype (mez / nie_mez)
+                    TUMOR_SUBTYPE[chosen_i, chosen_j] = TUMOR_SUBTYPE[i, j]
 
             # quiescent
             if CELLS[2, i, j]:
@@ -281,7 +283,8 @@ def update_tumor_growth():
 def vessel_entry():
     global CELLS, RHO_TC, REMOVED_ENTRY_CELLS
     REMOVED_ENTRY_CELLS = []
-    overlap = CELLS[1] & CELLS[5]
+    # Only mesenchymal-like tumor cells ('mez', TUMOR_SUBTYPE==1) can enter vessels
+    overlap = CELLS[1] & CELLS[5] & (TUMOR_SUBTYPE == 1)
     if not overlap.any():
         return
 
@@ -317,6 +320,8 @@ def tissue_entry():
                 ni, nj = candidates[np.random.randint(len(candidates))]
                 CELLS[1, ni, nj] = True
                 RHO_TC[ni, nj] = 1.0
+                # Re-entering cells from vasculature are mesenchymal-like
+                TUMOR_SUBTYPE[ni, nj] = 1
 
     REMOVED_ENTRY_CELLS = []
 

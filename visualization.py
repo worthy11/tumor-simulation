@@ -7,19 +7,47 @@ def cells_to_rgb(cells):
     """Convert CELLS tensor to RGB image for visualization."""
     rows, cols = cells.shape[1], cells.shape[2]
     rgb = np.ones((rows, cols, 3))
-    
-    colors = {
-        0: np.array([0.0, 0.0, 1.0]),      # endothelial - blue (veins)
-        1: np.array([1.0, 0.0, 0.0]),      # active tumor - red
-        2: np.array([1.0, 0.647, 0.0]),    # quiescent tumor - orange
-        3: np.array([1.0, 1.0, 0.0]),      # migrating tumor - yellow
-        4: np.array([0.545, 0.271, 0.075]), # necrotic tumor - brown
-        5: np.array([0.0, 1.0, 0.0])       # vein entry points - green
-    }
-    
-    for cell_type in [0, 5, 1, 2, 3, 4]:
-        mask = cells[cell_type] > 0
-        rgb[mask] = colors[cell_type]
+    # Colors
+    endothelial_col = np.array([0.0, 0.0, 1.0])      # veins - blue
+    necrotic_col = np.array([0.545, 0.271, 0.075])   # necrotic - brown
+    entry_col = np.array([0.0, 1.0, 0.0])            # entry points - green
+
+    # Tumor colors differ by subtype (mez vs nie_mez)
+    # nie_mez (non-mesenchymal-like): active red
+    active_nie_col = np.array([1.0, 0.0, 0.0])
+    # Quiescent color is shared between subtypes (user requested only the starting/active color differ)
+    quiescent_col = np.array([1.0, 0.647, 0.0])
+
+    # mez (mesenchymal-like): active uses a distinct color
+    active_mez_col = np.array([0.8, 0.0, 0.8])   # magenta-ish for active mez
+
+    migrating_col = np.array([1.0, 1.0, 0.0])    # migrating - yellow
+
+    # Draw endothelial cells and entry points first
+    rgb[cells[0] > 0] = endothelial_col
+    rgb[cells[5] > 0] = entry_col
+
+    # Active tumor cells split by subtype
+    active_mask = cells[1] > 0
+    if 'TUMOR_SUBTYPE' in globals():
+        mez_mask = (TUMOR_SUBTYPE == 1)
+    else:
+        # fallback: if not available, treat all as nie_mez
+        mez_mask = np.zeros((rows, cols), dtype=bool)
+
+    active_mez_mask = active_mask & mez_mask
+    active_nie_mask = active_mask & (~mez_mask)
+    rgb[active_nie_mask] = active_nie_col
+    rgb[active_mez_mask] = active_mez_col
+
+    # Quiescent tumor cells split by subtype
+    quiescent_mask = cells[2] > 0
+    # Both subtypes share the same quiescent color
+    rgb[quiescent_mask] = quiescent_col
+
+    # Migrating and necrotic cells
+    rgb[cells[3] > 0] = migrating_col
+    rgb[cells[4] > 0] = necrotic_col
     
     return rgb
 

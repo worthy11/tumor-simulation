@@ -265,6 +265,9 @@ RHO_EC = np.zeros((ROWS, COLS), dtype=np.float64)
 U_INS = np.zeros((2, ROWS, COLS), dtype=np.float64)
 U_BLOOD = np.zeros((2, ROWS, COLS), dtype=np.float64)
 
+# Tumor cell subtype: 0 - nie_mez (non-mes), 1 - mez (mesenchymal-like — can enter vessels)
+TUMOR_SUBTYPE = np.zeros((ROWS, COLS), dtype=np.uint8)
+
 # P_INS - interstitial fluid pressure
 # P_LUM - intravascular blood pressure (czemu nie moze byc P_BLOOD??)
 # U_INS - interstitial fluid flow velocity
@@ -294,9 +297,10 @@ CELLS[0] = VEIN_MASK
 # Create vein entry points (CELLS[5]) at crossings and selected interior spots
 ENTRY_SEED = 42
 # Increase spacing and lower caps to reduce total number of entry points
-ENTRY_MIN_DIST = 45.0
-MAX_INTERSECTIONS = 150
-MAX_ADDITIONAL = 60
+# (reduced further per user request)
+ENTRY_MIN_DIST = 80.0
+MAX_INTERSECTIONS = 80
+MAX_ADDITIONAL = 20
 INCLUDE_ENDPOINTS = False
 
 entry_points = make_vein_entry_points(
@@ -327,6 +331,18 @@ if entry_points:
 start_x, start_y = ROWS // 2, COLS // 2
 CELLS[1, start_x-1:start_x+2, start_y] = 1
 CELLS[1, start_x, start_y-1:start_y+2] = 1
+
+# Initialize tumor subtypes for the seeded cells: 60% mez, 40% nie_mez
+init_coords = np.column_stack(np.where(CELLS[1]))
+if init_coords.size > 0:
+    rng = np.random.default_rng(1)
+    n = len(init_coords)
+    mez_count = int(np.round(0.6 * n))
+    if mez_count > 0:
+        chosen = rng.choice(n, size=mez_count, replace=False)
+        for idx in chosen:
+            r, c = init_coords[idx]
+            TUMOR_SUBTYPE[r, c] = 1
 
 # Cell respiration parameters
 D_O2 = 8e-14        # diffusion coefficient of O2
