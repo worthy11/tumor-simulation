@@ -35,7 +35,7 @@ def divergence(px, py, dx=DELTA, dy=DELTA):
     return div
 
 def set_initial_conditions():
-    global O2, G, CO2, ECM, VEGF, MMP, P_INS, P_LUM, U_INS, U_BLOOD, RHO_EC, RHO_TC
+    global O2, G, CO2, ECM, MMP, P_INS, P_LUM, U_INS, RHO_TC
     O2[:] = ch_O2
     G[:] = ch_g
     CO2[:] = ch_CO2
@@ -45,8 +45,7 @@ def set_initial_conditions():
 
     P_INS[:] = 1.
     P_LUM[:] = 60.
-    U_INS[:] = 1e-8
-    U_BLOOD[:] = 1e-2
+    U_INS[:] = 1e-7
 
     RHO_TC[:] = CELLS[1].astype(np.float64)
 
@@ -149,55 +148,6 @@ def update_ecm():
     ECM[:] = ECM - DT * excretion
     ECM[ECM < 0] = 0
 
-# def update_vegf():
-#     global VEGF
-#     advection = np.zeros((ROWS, COLS), dtype=np.float64)
-#     diffusion = np.zeros((ROWS, COLS), dtype=np.float64)
-#     production = np.zeros((ROWS, COLS), dtype=np.float64)
-#     perfusion = np.zeros((ROWS, COLS), dtype=np.float64)
-#     binding = np.zeros((ROWS, COLS), dtype=np.float64)
-#     unbinding = np.zeros((ROWS, COLS), dtype=np.float64)
-#     excretion = np.zeros((ROWS, COLS), dtype=np.float64)
-
-#     Fx = U_INS[0] * VEGF
-#     Fy = U_INS[1] * VEGF
-#     advection = divergence(Fx, Fy)
-
-#     diffusion = D_VEGF * laplacian(VEGF)
-
-#     production = (ch_CO2 > CO2) * (1 - CO2 / ch_CO2) * r_VEGF * CELLS[1]
-
-#     perfusion = f_VEGF * d_0 / d_c * CELLS[0]
-
-#     binding = k_plus_VEGF * VEGFR2[0] * VEGF
-
-#     unbinding = k_minus_VEGF * VEGFR2[1]
-
-#     excretion = eps_VEGF * VEGF
-
-#     VEGF[:] = VEGF + DT * (-advection + diffusion + production - perfusion - binding + unbinding - excretion)
-#     VEGF[VEGF < 0] = 0
-
-# def update_vegfr2():
-#     global VEGFR2
-#     loss_free = np.zeros((ROWS, COLS), dtype=np.float64)
-#     gain_free = np.zeros((ROWS, COLS), dtype=np.float64)
-#     production_active = np.zeros((ROWS, COLS), dtype=np.float64)
-#     loss_active = np.zeros((ROWS, COLS), dtype=np.float64)
-
-#     loss_free = k_plus_VEGF * VEGFR2[0] * VEGF
-#     gain_free = k_minus_VEGF * VEGFR2[1]
-
-#     production_active = k_plus_VEGF * VEGFR2[0] * VEGF
-#     loss_active = k_minus_VEGF * VEGFR2[1]
-
-#     VEGFR2[0][:] = VEGFR2[0] + DT * (-loss_free + gain_free)
-#     VEGFR2[1][:] = VEGFR2[1] + DT * (production_active - loss_active)
-    
-#     VEGFR2[0][VEGFR2[0] < 0] = 0
-#     VEGFR2[1][VEGFR2[1] < 0] = 0
-
-
 # -- CELLULAR SCALE --
 def update_vitality():
     global O2, G, CO2, V
@@ -250,7 +200,6 @@ def update_tumor_phenotypes():
                     chosen_i, chosen_j = indices[choice]
 
                     CELLS[1, chosen_i, chosen_j] = 1
-                    # Daughter cell inherits subtype (mez / nie_mez)
                     TUMOR_SUBTYPE[chosen_i, chosen_j] = TUMOR_SUBTYPE[i, j]
 
             # quiescent
@@ -268,14 +217,10 @@ def update_tumor_phenotypes():
 def update_tumor_growth():
     global RHO_TC, MMP
     diff_term = D_TC * laplacian(RHO_TC)
-    
     grad_ce_x, grad_ce_y = gradient(V)
-    
     haptotaxis_x = beta_h * grad_ce_x
     haptotaxis_y = beta_h * grad_ce_y
-    
     taxis_div = divergence(haptotaxis_x, haptotaxis_y)
-
     RHO_TC[:] = RHO_TC + DT * (diff_term - taxis_div)
     RHO_TC[RHO_TC < 0] = 0
 
